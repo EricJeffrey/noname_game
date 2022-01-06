@@ -1,145 +1,226 @@
-import * as THREE from "./three.js/build/three.module.js";
+import {
+    BufferGeometry, Color, Line, LineBasicMaterial, MathUtils, Mesh, MeshBasicMaterial, MeshPhongMaterial, PerspectiveCamera, PlaneGeometry, PointLight, Raycaster, Scene, Vector2, Vector3, WebGLRenderer
+} from "./three.js/build/three.module.js";
 
-function basicAnimateTest() {
-    const scene = new THREE.Scene();
-    scene.background = 0xffffff;
-    const geometryBackground = new THREE.PlaneGeometry(300, 300);
-    const materialBackground = new THREE.MeshPhongMaterial({ color: 0x888888 });
-    const background = new THREE.Mesh(geometryBackground, materialBackground);
-    // background.receiveShadow = true;
-    background.position.set(0, 0, -20);
-    scene.add(background);
-
-    // 板子
-    const geometryBoard = new THREE.BoxGeometry(30, 2, 60);
-    const materialBoard = new THREE.MeshPhongMaterial({ color: 0x339922 });
-    const board = new THREE.Mesh(geometryBoard, materialBoard);
-    board.receiveShadow = true;
-    board.position.set(0, -4, -20);
-    scene.add(board);
-
-    // 一个锥体
-    const geometryCone = new THREE.ConeGeometry(1, 2, 3);
-    const materialCone = new THREE.MeshPhongMaterial({ color: 0x337777 });
-    const cone = new THREE.Mesh(geometryCone, materialCone);
-    cone.position.set(-3, 0, -1);
-    cone.castShadow = true;
-    cone.receiveShadow = true;
-    scene.add(cone);
-
-    // 一个立方体
-    const geometryCube = new THREE.BoxGeometry(2, 2, 2);
-    const materialCube = new THREE.MeshPhongMaterial({ color: 0x0056dd });
-    const cube = new THREE.Mesh(geometryCube, materialCube);
-    cube.castShadow = true;
-    cube.receiveShadow = true;
-    scene.add(cube);
-
-    scene.add(new THREE.AmbientLight(0xffffff));
-
-    const light = new THREE.DirectionalLight();
-    light.position.set(3, 4, 2);
-    light.castShadow = true;
-    light.shadow.camera.zoom = 1;
-    scene.add(light);
-
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 10, 20);
-    camera.lookAt(0, 0, 0);
-
-    const renderer = new THREE.WebGLRenderer();
+function boardMultiBoxTest() {
+    const renderer = new WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     document.body.appendChild(renderer.domElement);
 
+    const camera = new PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1500);
+    camera.position.set(0, 400, 320);
+    camera.lookAt(0, 0, 20);
+
+    const scene = new Scene();
+    scene.background = new Color(0xdddddd);
+
+    const pointLight = new PointLight(0xffffff);
+    pointLight.position.set(-100, 300, 100);
+    scene.add(pointLight);
+
+    const rollOverCube = new Mesh(new PlaneGeometry(30, 30),
+        new MeshPhongMaterial({ color: 0x3399dd, opacity: 0.5, transparent: true }));
+    rollOverCube.rotateX(MathUtils.degToRad(-90));
+    scene.add(rollOverCube);
+
+
+    const rayCaster = new Raycaster();
+    const pointer = new Vector2(0, 0);
+    const objects = [];
+
+    const plane = new Mesh(new PlaneGeometry(1000, 1000), new MeshBasicMaterial({ color: 0x999999 }));
+    plane.rotateX(MathUtils.degToRad(-90));
+    plane.visible = false;
+    scene.add(plane);
+    objects.push(plane);
+
+    const boardInfo = drawBoard(scene);
+
+    {
+        // boardInfo.allPoints.forEach(point => {
+        //     let plane = new Mesh(new PlaneGeometry(20, 20), new MeshPhongMaterial({ color: 0xdd5500, side: DoubleSide }));
+        //     plane.position.copy(point.setZ(point.z));
+        //     plane.rotation.x = MathUtils.degToRad(90);
+        //     scene.add(plane);
+        // });
+    }
+
+    document.body.appendChild(renderer.domElement);
+    window.addEventListener("resize", onWindowResize);
+    window.addEventListener("mousemove", onPointerMove);
+
+    animate();
+
     function animate() {
         requestAnimationFrame(animate);
-        cube.rotation.y += 0.01;
-        cone.rotation.z += 0.01;
-        // board.rotation.y += 0.01;
+        render();
+    }
+    function render() {
         renderer.render(scene, camera);
     }
-    animate();
+    function onWindowResize() {
+        // windowHalfX = window.innerWidth / 2;
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    function onPointerMove(event) {
+        pointer.set((event.clientX / window.innerWidth) * 2 - 1, - (event.clientY / window.innerHeight) * 2 + 1);
+        rayCaster.setFromCamera(pointer, camera);
+        const intersects = rayCaster.intersectObjects(objects);
+        if (intersects.length > 0) {
+            const intersect = intersects[0];
+            boardInfo.allPoints.forEach((point, i) => {
+                let insideBox = (target, boxCenter) => {
+                    return target.x >= boxCenter.x - 20 && target.x <= boxCenter.x + 20 &&
+                        target.z >= boxCenter.z - 20 && target.z <= boxCenter.z + 20;
+                };
+                if (insideBox(intersect.point, point)) {
+                    rollOverCube.position.copy(point);
+                }
+            });
+        }
+    }
 }
 
-function mouseClickTest() {
+function drawBoard(scene) {
+    const HORIZONTAL_SPACE = 40;
+    const VERTICAL_SPACE = 40;
+    const CHUHE_HANJIE_SPACE = 60;
 
-    let intersected;
-    let pointer = new THREE.Vector2();
+    const LINE_WIDTH = 1; // 线宽实际上总是1
 
-    let cube;
+    const BOARD_WIDTH = HORIZONTAL_SPACE * 8 + LINE_WIDTH * 9;
+    const BOARD_DEPTH = VERTICAL_SPACE * 4 * 2 + CHUHE_HANJIE_SPACE + LINE_WIDTH * 5 * 2;
 
-    let scene = new THREE.Scene();
+    const BOARD_Y = 0;
 
-    // add objects to scene
-    {
-        const geometryCube = new THREE.BoxGeometry(3, 1, 3);
-        const materialCube = new THREE.MeshLambertMaterial({ color: 0x9988dd })
-        cube = new THREE.Mesh(geometryCube, materialCube);
-        cube.position.set(0, 2, 2);
-        cube.castShadow = true;
-        cube.receiveShadow = true;
-        scene.add(cube);
-    }
-    {
-        const geometryCube = new THREE.BoxGeometry(30, 1, 30);
-        const materialCube = new THREE.MeshLambertMaterial({ color: 0x22dddd })
-        const cube = new THREE.Mesh(geometryCube, materialCube);
-        cube.position.set(0, 0, 0);
-        cube.receiveShadow = true;
-        scene.add(cube);
+    const BING_PAO_SEG_LENGTH = 5;
+    const BING_PAO_SEG_SPACE = 2;
 
-    }
-    {
-        const light = new THREE.DirectionalLight();
-        light.position.set(3, 3, 3);
-        light.castShadow = true;
-        scene.add(light);
+    const LINE_COLOR = 0x3333dd;
+
+    function drawSegments(segments) {
+        let makeLine = (points, colorInHex) => {
+            let buffer = new BufferGeometry();
+            buffer.setFromPoints(points);
+            return new Line(buffer, new LineBasicMaterial({ color: colorInHex }));
+        };
+        for (let i = 0; i < segments.length; i++) {
+            const points = segments[i];
+            const line = makeLine(points, LINE_COLOR);
+            scene.add(line);
+        }
     }
 
-    let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 8, 20);
+    function makeSegments() {
 
-    let renderer = new THREE.WebGLRenderer();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    document.body.appendChild(renderer.domElement);
-
-    // mouse move
-    function onPointerMove(event) {
-        pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
-        pointer.y = (event.clientY / window.innerHeight) * 2 - 1;
-    }
-    document.addEventListener("click", onPointerMove);
-
-    let rayCaster = new THREE.Raycaster();
-
-    function animate() {
-        requestAnimationFrame(animate);
-        cube.rotation.y += 0.01;
-
-        rayCaster.setFromCamera(pointer, camera);
-        const intersects = rayCaster.intersectObjects(scene.children, false);
-        // console.log(intersects);
-        if (intersects.length > 0) {
-            if (intersected != intersects[0].object) {
-                if (intersected)
-                    intersected.material.emissive.setHex(intersected.currentHex);
-                intersected = intersects[0].object;
-                intersected.currentHex = intersected.material.emissive.getHex();
-                intersected.material.emissive.setHex(0xff0000);
+        let posOfBing = [];
+        { // posOfBing
+            for (let i = 0; i < 5; i += 1) {
+                let z = CHUHE_HANJIE_SPACE / 2 + LINE_WIDTH + VERTICAL_SPACE;
+                posOfBing.push(new Vector3(-BOARD_WIDTH / 2 + (LINE_WIDTH + HORIZONTAL_SPACE) * i * 2, BOARD_Y, z));
+                posOfBing.push(new Vector3(-BOARD_WIDTH / 2 + (LINE_WIDTH + HORIZONTAL_SPACE) * i * 2, BOARD_Y, -z));
             }
-            cube.position.x = intersects[0].point.x;
-        } else {
-            if (intersected)
-                intersected.material.emissive.setHex(intersected.currentHex);
-            intersected = null;
+        }
+        let posOfPao = [];
+        { // posOfPao
+            let z = CHUHE_HANJIE_SPACE / 2 + (LINE_WIDTH + VERTICAL_SPACE) * 2;
+            posOfPao = [
+                new Vector3(-BOARD_WIDTH / 2 + LINE_WIDTH + HORIZONTAL_SPACE, BOARD_Y, z),
+                new Vector3(BOARD_WIDTH / 2 - LINE_WIDTH * 2 - HORIZONTAL_SPACE, BOARD_Y, z),
+                new Vector3(-BOARD_WIDTH / 2 + LINE_WIDTH + HORIZONTAL_SPACE, BOARD_Y, -z),
+                new Vector3(BOARD_WIDTH / 2 - LINE_WIDTH * 2 - HORIZONTAL_SPACE, BOARD_Y, -z),
+            ];
         }
 
-        renderer.render(scene, camera);
+        let makePart = (startPoint, zIncrease = true) => {
+            let segments = [];
+            for (let i = 0; i < 5; i++) {
+                let z = startPoint.z + (LINE_WIDTH + VERTICAL_SPACE) * i * (zIncrease ? 1 : -1);
+                segments.push([
+                    new Vector3(startPoint.x, startPoint.y, z),
+                    new Vector3(startPoint.x + (LINE_WIDTH + HORIZONTAL_SPACE) * 8, startPoint.y, z)
+                ]);
+            }
+            for (let i = 0; i < 9; i++) {
+                let x = startPoint.x + (LINE_WIDTH + HORIZONTAL_SPACE) * i;
+                segments.push([
+                    new Vector3(x, startPoint.y, startPoint.z),
+                    new Vector3(x, startPoint.y, startPoint.z + (LINE_WIDTH + VERTICAL_SPACE) * 4 * (zIncrease ? 1 : -1))]
+                );
+            }
+            return segments;
+        };
+
+        let makeBingOrPaoSeg = (point) => {
+            let xLeft = point.x - BING_PAO_SEG_SPACE;
+            let xRight = point.x + BING_PAO_SEG_SPACE;
+            let zUp = point.z - BING_PAO_SEG_SPACE;
+            let zDown = point.z + BING_PAO_SEG_SPACE;
+            return [
+                [
+                    new Vector3(xLeft, BOARD_Y, zUp - BING_PAO_SEG_LENGTH),
+                    new Vector3(xLeft, BOARD_Y, zUp),
+                    new Vector3(xLeft - BING_PAO_SEG_LENGTH, BOARD_Y, zUp)
+                ],
+                [
+                    new Vector3(xLeft, BOARD_Y, zDown + BING_PAO_SEG_LENGTH),
+                    new Vector3(xLeft, BOARD_Y, zDown),
+                    new Vector3(xLeft - BING_PAO_SEG_LENGTH, BOARD_Y, zDown)
+                ],
+                [
+                    new Vector3(xRight, BOARD_Y, zUp - BING_PAO_SEG_LENGTH),
+                    new Vector3(xRight, BOARD_Y, zUp),
+                    new Vector3(xRight + BING_PAO_SEG_LENGTH, BOARD_Y, zUp)
+                ],
+                [
+                    new Vector3(xRight, BOARD_Y, zDown + BING_PAO_SEG_LENGTH),
+                    new Vector3(xRight, BOARD_Y, zDown),
+                    new Vector3(xRight + BING_PAO_SEG_LENGTH, BOARD_Y, zDown)
+                ],
+            ];
+        };
+        let makeBingPaoSegs = () => [].concat(posOfPao, posOfBing).map((point, i) => makeBingOrPaoSeg(point)).flat();
+
+        let resSegments = [].concat(
+            makePart(new Vector3(-BOARD_WIDTH / 2, BOARD_Y, CHUHE_HANJIE_SPACE / 2), true),
+            makePart(new Vector3(-BOARD_WIDTH / 2, BOARD_Y, -CHUHE_HANJIE_SPACE / 2), false),
+            makeBingPaoSegs(),
+        );
+        return resSegments;
     }
-    animate();
+    function generateBoardInfo() {
+        // 棋子的位置
+        // 左 -> 右
+        //   [ 車 马 相 士 将 士 相 马 車 ]
+        //   [ 炮 炮 ]
+        //   [ 兵 兵 兵 兵 兵 ]
+        const postionOfPiece = {
+            player: [],
+            opponent: []
+        };
+        let allPoints = [];
+        for (let i = 0; i < 5; i++) {
+            for (let j = 0; j < 9; j++) {
+                let point = new Vector3(
+                    -BOARD_WIDTH / 2 + (LINE_WIDTH + HORIZONTAL_SPACE) * j,
+                    BOARD_Y,
+                    CHUHE_HANJIE_SPACE / 2 + (LINE_WIDTH + VERTICAL_SPACE) * i
+                );
+                allPoints.push(point.clone());
+                allPoints.push(point.setZ(-point.z));
+            }
+        }
+        return {
+            postionOfPiece, allPoints,
+            HORIZONTAL_SPACE, VERTICAL_SPACE, CHUHE_HANJIE_SPACE,
+        }
+    }
+    drawSegments(makeSegments(), scene);
+    const boardInfo = generateBoardInfo();
+    return boardInfo;
 }
 
-// basicAnimateTest();
-mouseClickTest();
+boardMultiBoxTest();
