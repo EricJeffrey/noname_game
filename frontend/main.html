@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Babylon.js sample code</title>
+    <!-- Babylon.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.6.2/dat.gui.min.js"></script>
+    <script src="https://assets.babylonjs.com/generated/Assets.js"></script>
+    <script src="https://preview.babylonjs.com/ammo.js"></script>
+    <script src="https://preview.babylonjs.com/cannon.js"></script>
+    <script src="https://preview.babylonjs.com/Oimo.js"></script>
+    <script src="https://preview.babylonjs.com/earcut.min.js"></script>
+    <script src="https://preview.babylonjs.com/babylon.js"></script>
+    <script src="https://preview.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
+    <script src="https://preview.babylonjs.com/proceduralTexturesLibrary/babylonjs.proceduralTextures.min.js"></script>
+    <script src="https://preview.babylonjs.com/postProcessesLibrary/babylonjs.postProcess.min.js"></script>
+    <script src="https://preview.babylonjs.com/loaders/babylonjs.loaders.js"></script>
+    <script src="https://preview.babylonjs.com/serializers/babylonjs.serializers.min.js"></script>
+    <script src="https://preview.babylonjs.com/gui/babylon.gui.min.js"></script>
+    <script src="https://preview.babylonjs.com/inspector/babylon.inspector.bundle.js"></script>
+    <style>
+        html,
+        body {
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        #renderCanvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="renderCanvas"></canvas>
+    <script>
+        var canvas = document.getElementById("renderCanvas");
+        var startRenderLoop = function (engine, canvas) {
+            engine.runRenderLoop(function () {
+                if (sceneToRender && sceneToRender.activeCamera) {
+                    sceneToRender.render();
+                }
+            });
+        }
+        var engine = null;
+        var scene = null;
+        var sceneToRender = null;
+        var createDefaultEngine = function () { return new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, disableWebGL2Support: false }); };
+        var createScene = function () {
+            //  Particle parameters
+            var gravity = -0.15;                // gravity
+            var radius = 30;                     // explosion radius
+            var speed = 180;           // particle max speed
+            var digested = false;
+            // Scene and camera
+            var scene = new BABYLON.Scene(engine);
+            scene.clearColor = new BABYLON.Color3(.4, .6, .8);
+            var camera = new BABYLON.ArcRotateCamera("camera1", 0, 0, 0, new BABYLON.Vector3(0, 0, -0), scene);
+            camera.setPosition(new BABYLON.Vector3(0, 0, -200));
+            camera.attachControl(canvas, true);
+            // Lights
+            var light = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
+            light.groundColor = new BABYLON.Color3(0.5, 0.5, 0.5);
+            light.intensity = 0.2;
+            var pl = new BABYLON.PointLight("pl", new BABYLON.Vector3(0, 0, 0), scene);
+            pl.diffuse = new BABYLON.Color3(1, 1, 1);
+            pl.specular = BABYLON.Color3.Black();
+            pl.intensity = 0.7;
+            // SPS : the particles !
+            var sps = new BABYLON.SolidParticleSystem("sps", scene, { isPickable: true });
+            // Basic test
+            var mat = new BABYLON.StandardMaterial("m", scene);
+            mat.diffuseColor = BABYLON.Color3.Green();
+            mat.backFaceCulling = false;
+            mat.freeze();
+            // var model = BABYLON.MeshBuilder.CreateTorusKnot('s', { radius: 20, tube: 6, tubularSegments: 64, radialSegments: 128 }, scene);
+            BABYLON.SceneLoader.ImportMesh("", "/models/", "bee.glb", scene, function (result) {
+                console.log(result);
+                var dude = result[1];
+                dude.scaling = new BABYLON.Vector3(0.05, 0.05, 0.05);
+                dude.updateFacetData();
+                console.log(dude)
+                console.log(dude.facetNb)
+                var model = dude;
+                sps.digest(model, { facetNb: 4, delta: 160 });
+                digested = true;
+                model.material = mat;
+                model.dispose();
+                var s = sps.buildMesh();
+                s.material = mat;
+                sps.setParticles();
+                sps.refreshVisibleSize();
+                // SPS tmp internal vars to avoid memory re-allocations
+                sps.vars.target = BABYLON.Vector3.Zero();                                               // the target point where to set the explosion center
+                sps.vars.tmp = BABYLON.Vector3.Zero();                                                  // tmp vector3
+                sps.vars.justClicked = false;                                                           // flag to compute or not the initial velocities
+                sps.vars.radius = radius;
+                sps.vars.minY = -100;
+                // ground
+                var gmat = new BABYLON.StandardMaterial("gm", scene);
+                var ground = BABYLON.MeshBuilder.CreateGround('g', { width: 1500, height: 1500 }, scene);
+                ground.isPickable = false;
+                ground.position.y = sps.vars.minY;
+                ground.material = gmat;
+                gmat.diffuseColor = new BABYLON.Color3(0.7, 0.5, 0.4);
+                gmat.freeze();
+                // SPS behavior : this function is called by setParticles() for each particle
+                sps.updateParticle = function (p) {
+                    // just after the click, set once the initial velocity
+                    if (sps.vars.justClicked) {
+                        // let's give them an initial velocity according to their distance from the explosion center
+                        p.position.subtractToRef(sps.vars.target, sps.vars.tmp);
+                        var len = sps.vars.tmp.length();
+                        var scl = (len < 0.001) ? 1.0 : sps.vars.radius / len;
+                        sps.vars.tmp.normalize();
+                        p.velocity.x += sps.vars.tmp.x * scl * speed * (1 + Math.random() * .3);
+                        p.velocity.y += sps.vars.tmp.y * scl * speed * (1 + Math.random() * .3);
+                        p.velocity.z += sps.vars.tmp.z * scl * speed * (1 + Math.random() * .3);
+                        p.rand = Math.random() / 100;
+                        if (p.idx == sps.nbParticles - 1) {
+                            sps.vars.justClicked = false;  // last particle initialized
+                        }
+                    }
+                    // move the particle
+                    if (boom && !sps.vars.justClicked) {
+                        if (p.position.y < sps.vars.minY) {
+                            p.position.y = sps.vars.minY;
+                            p.velocity.y = 0;
+                            p.velocity.x = 0;
+                            p.velocity.z = 0;
+                        } else {
+                            p.velocity.y += gravity;
+                            p.position.x += p.velocity.x;
+                            p.position.y += p.velocity.y;
+                            p.position.z += p.velocity.z;
+                            // rotate
+                            p.rotation.x += (p.velocity.z) * p.rand;
+                            p.rotation.y += (p.velocity.x) * p.rand;
+                            p.rotation.z += (p.velocity.y) * p.rand;
+                        }
+                    }
+                };
+
+                // Boom trigger
+                var boom = false;
+                scene.onPointerDown = function (evt, pickResult) {
+                    if (digested) {
+                        var faceId = pickResult.faceId;
+                        if (faceId == -1) { return; }
+                        var idx = sps.pickedParticles[faceId].idx;
+                        var p = sps.particles[idx];
+                        boom = true;
+                        // set the target (explosion center) at the distance "radius" from the picked particle on the camera-particle axis
+                        camera.position.subtractToRef(p.position, sps.vars.target);
+                        sps.vars.target.normalize();
+                        sps.vars.target.scaleInPlace(radius);
+                        sps.vars.target.addInPlace(p.position);
+                        sps.vars.justClicked = true;
+                    }
+                }
+                // Animation
+                //scene.debugLayer.show();
+                scene.registerBeforeRender(function () {
+                    if (digested) {
+                        sps.setParticles();
+                    }
+                    pl.position = camera.position;
+                });
+            });
+            return scene;
+        };
+
+        window.initFunction = async function () {
+
+            var asyncEngineCreation = async function () {
+                try {
+                    return createDefaultEngine();
+                } catch (e) {
+                    console.log("the available createEngine function failed. Creating the default engine instead");
+                    return createDefaultEngine();
+                }
+            }
+            window.engine = await asyncEngineCreation();
+            if (!engine) throw 'engine should not be null.';
+            startRenderLoop(engine, canvas);
+            window.scene = createScene();
+        };
+        initFunction().then(() => {
+            sceneToRender = scene
+        });
+        // Resize
+        window.addEventListener("resize", function () {
+            engine.resize();
+        });
+    </script>
+</body>
+
+</html>
