@@ -1,117 +1,131 @@
-var createScene = function () {
-    var scene = new BABYLON.Scene(engine);
-    scene.clearColor = new BABYLON.Color3(.4, .6, .8);
-    var camera = new BABYLON.ArcRotateCamera("camera1", 0, 0, 0, new BABYLON.Vector3(0, 0, -0), scene);
-    camera.setPosition(new BABYLON.Vector3(0, 0, -100));
-    camera.attachControl(canvas, true);
-    // Lights
-    var light = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
-    light.groundColor = new BABYLON.Color3(0.5, 0.5, 0.5);
-    light.intensity = 0.2;
-    var pl = new BABYLON.PointLight("pl", new BABYLON.Vector3(-80, 80, -80), scene);
-    pl.diffuse = new BABYLON.Color3(1, 1, 1);
-    pl.specular = BABYLON.Color3.Black();
-    pl.intensity = 0.7;
+const PIECE_TYPE_CAR = "CAR";
+const PIECE_TYPE_HORSE = "HORSE";
+const PIECE_TYPE_ELEPHANT = "ELEPHANT";
+const PIECE_TYPE_GUARD = "GUARD";
+const PIECE_TYPE_KING = "KING";
+const PIECE_TYPE_CANNON = "CANNON";
+const PIECE_TYPE_SOLDIER = "SOLDIER";
 
-    var ground = BABYLON.MeshBuilder.CreateGround("gr", { width: 2000, height: 4000 })
-    ground.position.y = -50;
+const PIECETYPE_2_MODEL_PATH = {
+    "CAR": { rootUrl: "https://www.babylonjs.com/Assets/DamagedHelmet/glTF/", name: "DamagedHelmet.gltf" },
+    "HORSE": { rootUrl: "https://www.babylonjs.com/Assets/DamagedHelmet/glTF/", name: "DamagedHelmet.gltf" },
+    "ELEPHANT": { rootUrl: "https://www.babylonjs.com/Assets/DamagedHelmet/glTF/", name: "DamagedHelmet.gltf" },
+    "GUARD": { rootUrl: "https://www.babylonjs.com/Assets/DamagedHelmet/glTF/", name: "DamagedHelmet.gltf" },
+    "KING": { rootUrl: "https://www.babylonjs.com/Assets/DamagedHelmet/glTF/", name: "DamagedHelmet.gltf" },
+    "CANNON": { rootUrl: "https://www.babylonjs.com/Assets/DamagedHelmet/glTF/", name: "DamagedHelmet.gltf" },
+    "SOLDIER": { rootUrl: "https://www.babylonjs.com/Assets/DamagedHelmet/glTF/", name: "DamagedHelmet.gltf" },
+};
 
-    function buildBoomSPS(model, mat, options) {
-        const gravity = -0.05;                // gravity
-        const radius = 10;                     // explosion radius
-        const speed = 2;           // particle max speed
-        const minY = -50;
 
-        // initialize SPS
-        var sps = new BABYLON.SolidParticleSystem("sps", scene, { isPickable: true });
-        sps.digest(model, { facetNb: 4, delta: 160 });
-        model.dispose();
-        var digestedMesh = sps.buildMesh();
-        digestedMesh.material = mat;
-        sps.setParticles();
-        sps.refreshVisibleSize();
-        sps.vars = {
-            target: BABYLON.Vector3.Zero(),
-            tmp: BABYLON.Vector3.Zero(),
-            justClicked: false,
-            radius: radius,
-            minY: minY,
-            boom: false,
-        };
-        // set update function of each particles
-        sps.updateParticle = function (p) {
-            if (sps.vars.justClicked) {
-                p.position.subtractToRef(sps.vars.target, sps.vars.tmp);
-                var len = sps.vars.tmp.length();
-                var scl = (len < 0.001) ? 1.0 : sps.vars.radius / len;
-                sps.vars.tmp.normalize();
-                p.velocity.x += sps.vars.tmp.x * scl * speed * (1 + Math.random() * 0.3);
-                p.velocity.y += sps.vars.tmp.y * scl * speed * (1 + Math.random() * 0.3);
-                p.velocity.z += sps.vars.tmp.z * scl * speed * (1 + Math.random() * 0.3);
-                p.rand = Math.random() / 100;
-                if (p.idx == sps.nbParticles - 1) {
-                    sps.vars.justClicked = false;
-                }
+function buildBoomSPS(model, scene) {
+    const gravity = -0.05;                // gravity
+    const radius = 2;                     // explosion radius
+    const speed = 0.1;           // particle max speed
+    const minY = -10;
+    const numOfParticle = 30;
+
+    // initialize SPS
+    var sps = new BABYLON.SolidParticleSystem("sps", scene, { isPickable: true });
+    sps.digest(model, { number: numOfParticle });
+    model.dispose();
+    var digestedMesh = sps.buildMesh();
+    digestedMesh.material = model.material;
+    sps.setParticles();
+    sps.refreshVisibleSize();
+    sps.vars = {
+        target: BABYLON.Vector3.Zero(),
+        tmp: BABYLON.Vector3.Zero(),
+        justClicked: false,
+        radius: radius,
+        minY: minY,
+        boom: false,
+    };
+    // set update function of each particles
+    sps.updateParticle = function (p) {
+        if (sps.vars.justClicked) {
+            p.position.subtractToRef(sps.vars.target, sps.vars.tmp);
+            var len = sps.vars.tmp.length();
+            var scl = (len < 0.001) ? 1.0 : sps.vars.radius / len;
+            sps.vars.tmp.normalize();
+            p.velocity.x += sps.vars.tmp.x * scl * speed * (1 + Math.random() * 0.3);
+            p.velocity.y += sps.vars.tmp.y * scl * speed * (1 + Math.random() * 0.3);
+            p.velocity.z += sps.vars.tmp.z * scl * speed * (1 + Math.random() * 0.3);
+            p.rand = Math.random() / 100;
+            if (p.idx == sps.nbParticles - 1) {
+                sps.vars.justClicked = false;
             }
-            if (sps.vars.boom && !sps.vars.justClicked) {
-                if (p.position.y < sps.vars.minY) {
-                    p.position.y = sps.vars.minY;
-                    p.velocity.setAll(0);
-                } else {
-                    p.velocity.y += gravity;
-                    p.position.x += p.velocity.x;
-                    p.position.y += p.velocity.y;
-                    p.position.z += p.velocity.z;
-
-                    p.rotation.x += (p.velocity.z) * p.rand;
-                    p.rotation.y += (p.velocity.x) * p.rand;
-                    p.rotation.z += (p.velocity.y) * p.rand;
-                }
-            }
-        };
-        function boomFrom(center) {
-            sps.vars.boom = true;
-            sps.vars.target = center;
-            sps.vars.justClicked = true;
         }
-        scene.registerBeforeRender(() => sps.setParticles());
-        return { sps, digestedMesh, boomFrom };
+        if (sps.vars.boom && !sps.vars.justClicked) {
+            if (p.position.y < sps.vars.minY) {
+                p.position.y = sps.vars.minY;
+                p.velocity.setAll(0);
+            } else {
+                p.velocity.y += gravity;
+                p.position.x += p.velocity.x;
+                p.position.y += p.velocity.y;
+                p.position.z += p.velocity.z;
+
+                p.rotation.x += (p.velocity.z) * p.rand;
+                p.rotation.y += (p.velocity.x) * p.rand;
+                p.rotation.z += (p.velocity.y) * p.rand;
+            }
+        }
+    };
+    function boomFrom(center) {
+        sps.vars.boom = true;
+        sps.vars.target = center;
+        sps.vars.justClicked = true;
     }
+    scene.registerBeforeRender(() => sps.setParticles());
+    return { sps, digestedMesh, boomFrom };
+}
 
-    // var model = BABYLON.MeshBuilder.CreateTorusKnot("knot", { radius: 12, tube: 3,  tubularSegments: 64, radialSegments: 128});
-    // model.rotation.y = -2;
-    var mat = new BABYLON.StandardMaterial("mat", scene);
-    mat.diffuseColor = new BABYLON.Color3.Green();
-    BABYLON.SceneLoader.ImportMeshAsync("", "https://playground.babylonjs.com/scenes/Dude/", "Dude.babylon").then((result) => {
-        // var model = BABYLON.Mesh.MergeMeshes(result.meshes);
-        // var model = result.meshes[5];
-        console.log(result);
-        var model = BABYLON.Mesh.MergeMeshes([
-            result.meshes[1], result.meshes[2], result.meshes[3], result.meshes[4], result.meshes[5],
-        ], true)
-        // model.updateFacetData();
 
-        var boomSps = buildBoomSPS(model, mat);
-        // boomSps.digestedMesh.position.setAll(0);
-        // boomSps.digestedMesh.scaling = new BABYLON.Vector3(50, 50, 50);
+class PieceObj {
+    constructor(scene, pieceType) {
+        this.pieceType = pieceType;
+        this.scene = scene;
+        this.sps = null;
+    }
+    initAt(pos3d) {
+        var model_path = PIECETYPE_2_MODEL_PATH[this.pieceType];
+        BABYLON.SceneLoader.ImportMesh("", model_path.rootUrl, model_path.name, this.scene, (newMeshes) => {
+            console.log(newMeshes);
+            window.tttt = newMeshes;
+            var model = newMeshes[1];
+            var sps = buildBoomSPS(model, this.scene);
+            sps.digestedMesh.position = pos3d;
+            this.sps = sps;
+        });
+    }
+    explode() {
+        if (this.sps != null)
+            this.sps.boomFrom(BABYLON.Vector3.Zero());
+    }
+};
 
-        scene.onPointerDown = function (evt, pickResult) {
+var createScene = function () {
+    // This creates a basic Babylon Scene object (non-mesh)
+    var scene = new BABYLON.Scene(engine);
 
-            var faceId = pickResult.faceId;
-            if (pickResult.pickedMesh != boomSps.digestedMesh || faceId == -1) return;
-            var idx = boomSps.sps.pickedParticles[faceId].idx;
-            var p = boomSps.sps.particles[idx];
-            console.log(idx);
-            console.log(p);
-            var center = new BABYLON.Vector3(0, 0, 0);
-            camera.position.subtractToRef(p.position, center);
-            center.normalize();
-            center.scaleInPlace(boomSps.sps.vars.radius);
-            center.addInPlace(p.position);
-            boomSps.boomFrom(center);
-        }
+    var camera = new BABYLON.ArcRotateCamera("camera1", 0, Math.PI / 3, 15, BABYLON.Vector3.Zero(), scene);
+    camera.setTarget(BABYLON.Vector3.Zero());
+    camera.attachControl(canvas, true);
+    var light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+    light.intensity = 0.7;
 
-    });
+    // Our built-in 'ground' shape.
+    var ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 60, height: 60 }, scene);
+    ground.position.y = -4;
+
+    var pieceCar = new PieceObj(scene, PIECE_TYPE_CAR);
+    pieceCar.initAt(new BABYLON.Vector3(0, 1, 0));
+    setTimeout(() => {
+        pieceCar.explode();
+        setTimeout(() => {
+            pieceCar.sps.digestedMesh.dispose();
+        }, 1500);
+    }, 4000);
 
     return scene;
-}
+};
