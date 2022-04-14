@@ -90,8 +90,6 @@ class PieceObj {
     initAt(pos3d) {
         var model_path = PIECETYPE_2_MODEL_PATH[this.pieceType];
         BABYLON.SceneLoader.ImportMesh("", model_path.rootUrl, model_path.name, this.scene, (newMeshes) => {
-            console.log(newMeshes);
-            window.tttt = newMeshes;
             var model = newMeshes[1];
             var sps = buildBoomSPS(model, this.scene);
             sps.digestedMesh.position = pos3d;
@@ -101,6 +99,31 @@ class PieceObj {
     explode() {
         if (this.sps != null)
             this.sps.boomFrom(BABYLON.Vector3.Zero());
+    }
+    // move along axis by dis, axis: 0 x, 1 y, 2 z
+    moveBy(dis, axis, onEnd) {
+        var targetProp = "position.x";
+        const tmpPos = this.sps.digestedMesh.position;
+        var targetPropValueStart = tmpPos.x;
+        switch (axis) {
+            case 0: break;
+            case 1:
+                targetProp = "position.y";
+                targetPropValueStart = tmpPos.y;
+                break;
+            case 2:
+                targetProp = "position.z";
+                targetPropValueStart = tmpPos.z;
+                break;
+            default:
+                break;
+        }
+        BABYLON.Animation.CreateAndStartAnimation(
+            "tmp", this.sps.digestedMesh, targetProp, 60,
+            20, targetPropValueStart, targetPropValueStart + dis,
+            BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT,
+            new BABYLON.PowerEase(4), onEnd, this.scene
+        );
     }
 };
 
@@ -120,12 +143,18 @@ var createScene = function () {
 
     var pieceCar = new PieceObj(scene, PIECE_TYPE_CAR);
     pieceCar.initAt(new BABYLON.Vector3(0, 1, 0));
+    var pieceCar2 = new PieceObj(scene, PIECE_TYPE_CANNON);
+    pieceCar2.initAt(new BABYLON.Vector3(-10, 1, 0));
+
     setTimeout(() => {
-        pieceCar.explode();
-        setTimeout(() => {
-            pieceCar.sps.digestedMesh.dispose();
-        }, 1500);
+        pieceCar.moveBy(-10, 0, () => {
+            pieceCar2.explode();
+            setTimeout(() => {
+                pieceCar2.sps.digestedMesh.dispose();
+            }, 500);
+        });
     }, 4000);
 
     return scene;
 };
+
