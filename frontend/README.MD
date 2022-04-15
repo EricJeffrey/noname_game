@@ -1,5 +1,5 @@
 
-随便写写先，Babylon。
+随便写写先，BabylonJS。
 
 - [three.js](https://threejs.org): 基于webgl的3D库，更适合3D渲染
 - [greensock/gsap](https://greensock.com/): web动画库
@@ -15,4 +15,4 @@
 
 - [babylonjs](https://www.babylonjs.com/): 3D游戏引擎，更适合游戏开发
 
-接下来试试babylon.js。
+babylon.js。
