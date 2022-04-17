@@ -18,7 +18,7 @@ var createScene = function () {
     const BOARD_STATUS_CHECKING = "CHECKING";
     const BOARD_STATUS_DECHECKING = "DECHECKING";
 
-    // !!! chessBoard should NOT contain nested Object !!!
+    // !!! chessBoard should NOT contain Nested Object !!!
     var chessBoard = [];
     var posOfRedKing = { x: 4, y: 9 };
     var posOfBlueKing = { x: 4, y: 0 };
@@ -129,7 +129,6 @@ var createScene = function () {
             function canGuardMoveTo(x1, y1, x2, y2, chessBoard) {
                 if (x1 >= 3 && x1 <= 5 && x2 >= 3 && x2 <= 5) {
                     if ((y1 <= 2 && y2 <= 2) || (y1 >= 7 && y2 >= 7)) {
-                        console.log("here")
                         let absx = Math.abs(x1 - x2), absy = Math.abs(y1 - y2);
                         if (absx == 1 && absy == 1 &&
                             chessBoard[x2][y2].pieceType == null)
@@ -192,7 +191,7 @@ var createScene = function () {
         })();
 
         // if piece can move to pos(x, y)
-        var canMoveTo = function (x1, y1, x2, y2, chessBoard) {
+        let canMoveTo = function (x1, y1, x2, y2, chessBoard) {
             if (x1 < 0 || x2 < 0 || y1 < 0 || y2 < 0
                 || x1 > 8 || x2 > 8 || y1 > 9 || y2 > 9)
                 return false;
@@ -202,7 +201,6 @@ var createScene = function () {
             if (chessBoard[x2][y2].belong != null &&
                 chessBoard[x2][y2].belong == pieceInfo.belong)
                 return false;
-            console.log("canmoveto", x1, y1, x2, y2);
             switch (pieceInfo.pieceType) {
                 case PIECE_TYPE_CAR:
                     return helper.canCarMoveTo(x1, y1, x2, y2, chessBoard);
@@ -225,7 +223,7 @@ var createScene = function () {
         }
 
         // if checkmate now
-        var isChecked = function (camp = curCamp, chessBoard, posOfKing) {
+        let isChecked = function (camp = curCamp, chessBoard, posOfKing) {
             let xOfKing = posOfKing.x, yOfKing = posOfKing.y;
             for (let x = 0; x < chessBoard.length; x++) {
                 for (let y = 0; y < chessBoard[x].length; y++) {
@@ -243,7 +241,7 @@ var createScene = function () {
         }
 
         // move piece at (x1, y1) to (x2, y2)
-        var moveTo = function (x1, y1, x2, y2, chessBoard) {
+        let moveTo = function (x1, y1, x2, y2, chessBoard) {
             let pieceInfo1 = chessBoard[x1][y1];
             let pieceInfo2 = chessBoard[x2][y2];
             if (pieceInfo2.pieceType != null)
@@ -258,9 +256,9 @@ var createScene = function () {
         }
 
         // if move piece at (x1,y1) to (x2,y2) can help the king
-        var canDeCheckmate = function (x1, y1, x2, y2) {
+        let canDeCheckmate = function (x1, y1, x2, y2) {
             if (pieceInfo.belong == curCamp &&
-                canMoveTo(x1, y1, x2, y2, chessBoard)) {
+                boardHelper.canMoveTo(x1, y1, x2, y2, chessBoard)) {
                 let tmpBoard = [];
                 for (let i = 0; i < chessBoard.length; i++) {
                     tmpBoard.push([]);
@@ -280,6 +278,7 @@ var createScene = function () {
             }
             return false;
         }
+        var boardHelper = { canMoveTo, isChecked, moveTo, canDeCheckmate };
     }
 
     // babylon game mechanism
@@ -290,11 +289,11 @@ var createScene = function () {
     const BOARD_RIVER_DEPTH = 2 * PIECE_SIZE;
 
     var scene = new BABYLON.Scene(engine);
-    var chessBoardMeshes = [];
+    var chessBoardUIObjs = [];
 
-    // !!! NO Nesting Object !!!
+    // !!! NO Nested Object !!!
     var pickingInfo = {
-        pickedMesh: null,
+        mesh: null,
         x: 0, y: 0,
     };
     {
@@ -447,14 +446,17 @@ var createScene = function () {
                 return piece;
             };
             for (let i = 0; i < chessBoard.length; i++) {
-                chessBoardMeshes.push([]);
+                chessBoardUIObjs.push([]);
                 for (let j = 0; j < chessBoard[i].length; j++) {
-                    chessBoardMeshes[i].push(null);
+                    chessBoardUIObjs[i].push({ mesh: null });
                     if (chessBoard[i][j].pieceType != null) {
                         let pos3d = calcPiecePos(i, j);
                         var piece = drawPiece(chessBoard[i][j], pos3d);
                         // chessBoard[i][j].mesh = piece;
-                        chessBoardMeshes[i][j] = piece;
+                        chessBoardUIObjs[i][j] = {
+                            mesh: piece,
+                            color: piece.material.diffuseColor
+                        };
                         pieceMeshSet.add(piece);
                     }
                 }
@@ -470,89 +472,119 @@ var createScene = function () {
         }
 
         let uiHelper = (function () {
-            let lastHoverInfo = { mesh: null, color: null };
+            let lastHoverPLAY = { x: null, y: null };
+            let lastHoverPICKING = { x: null, y: null };
 
-            // FIXME: highlight a piece at pos(x, y) with color
-            // FIXME: recover a piece at pos(x, y)
-            function highlightPiece(mesh, color, recoverLast = true) {
-                if (recoverLast)
-                    unHighlightLastPiece();
-                lastHoverInfo.mesh = mesh;
-                lastHoverInfo.color = mesh.material.diffuseColor;
+            // highlight a piece at pos(x, y) with color, onwhich == 0 for PLAYING, 1 for PICKING
+            function highlightPiece(x, y, color, onWhich) {
+                let mesh = chessBoardUIObjs[x][y].mesh;
+                if (onWhich == 0) {
+                    if (lastHoverPLAY.x != null)
+                        unHighlightPiece(lastHoverPLAY.x, lastHoverPLAY.y);
+                    lastHoverPLAY.x = x, lastHoverPLAY.y = y;
+                }
+                if (onWhich == 1) {
+                    if (lastHoverPICKING.x != null)
+                        unHighlightPiece(lastHoverPICKING.x, lastHoverPICKING.y);
+                    lastHoverPICKING.x = x, lastHoverPICKING.y = y;
+                }
                 mesh.material.diffuseColor = color;
             }
-            function unHighlightLastPiece() {
-                if (lastHoverInfo.mesh != null) {
-                    lastHoverInfo.mesh.material.diffuseColor = lastHoverInfo.color;
-                    lastHoverInfo.mesh = null;
+            function unHighlightPiece(x, y) {
+                let mesh = chessBoardUIObjs[x][y].mesh;
+                let color = chessBoardUIObjs[x][y].color;
+                if (mesh != null)
+                    mesh.material.diffuseColor = color;
+            }
+            // unhighlight last hover pos, onwhich == 0 for PLAYING, 1 for PICKING
+            function unHighlightLastHover(onWhich) {
+                if (onWhich == 0 && lastHoverPLAY.x != null) {
+                    unHighlightPiece(lastHoverPLAY.x, lastHoverPLAY.y);
+                    lastHoverPLAY.x = null;
+                }
+                if (onWhich == 1 && lastHoverPICKING.x != null) {
+                    unHighlightPiece(lastHoverPICKING.x, lastHoverPICKING.y);
+                    lastHoverPICKING.x = null;
                 }
             }
             function highlightPos(pos3d) {
-                let targetX = Math.round(pos3d.x / PIECE_SIZE) * PIECE_SIZE;
-                let targetZ = Math.round(pos3d.z / PIECE_SIZE) * PIECE_SIZE;
-                hintBox.position = new BABYLON.Vector3(targetX, BOARD_PLANE_Y, targetZ);
+                let x = Math.round(pos3d.x / PIECE_SIZE) * PIECE_SIZE;
+                let y = Math.round(pos3d.z / PIECE_SIZE) * PIECE_SIZE;
+                hintBox.position = new BABYLON.Vector3(x, BOARD_PLANE_Y, y);
                 hintBox.visibility = 0.5;
             }
             function pos3d2BoardPos(pos3d) {
-                let x = pos3d.x, y = pos3d.z;
-                x = Math.round(x / PIECE_SIZE);
-                y = Math.round(y / PIECE_SIZE);
-                if (y > 4) y = y - BOARD_RIVER_DEPTH / PIECE_SIZE;
-                return { x, y };
+                if (pos3d != null) {
+                    let x = pos3d.x, y = pos3d.z;
+                    x = Math.round(x / PIECE_SIZE);
+                    y = Math.round(y / PIECE_SIZE);
+                    if (y > 4) y = y - BOARD_RIVER_DEPTH / PIECE_SIZE;
+                    return { x, y };
+                }
+                return null;
             }
             function unHighlightPos() {
                 hintBox.visibility = 0;
             }
-
+            function checkPos2d(x, y) {
+                return x >= 0 && y >= 0 && x <= 8 && y <= 9;
+            }
+            function getPointerInfo(boardPickInfo) {
+                let pos = uiHelper.pos3d2BoardPos(boardPickInfo.pickedPoint);
+                let onBoard = uiHelper.checkPos2d(pos.x, pos.y);
+                let onPiece = onBoard && chessBoardUIObjs[pos.x][pos.y].mesh != null;
+                let piece = onPiece ? chessBoardUIObjs[pos.x][pos.y].mesh : null;
+                return { pos, onBoard, onPiece, piece };
+            }
             return {
-                highlightPiece, unHighlightLastPiece, highlightPos,
-                pos3d2BoardPos, unHighlightPos
+                highlightPiece, unHighlightPiece, unHighlightLastHover, highlightPos,
+                pos3d2BoardPos, unHighlightPos, checkPos2d, getPointerInfo
             };
         })();
 
         function pointerMove() {
-            let piecePickInfo = scene.pick(
-                scene.pointerX, scene.pointerY, (mesh) => pieceMeshSet.has(mesh)
+            let boardPickInfo = scene.pick(
+                scene.pointerX, scene.pointerY, (mesh) => {
+                    return mesh == boardRedBox || mesh == boardBlueBox;
+                }
             );
+            if (!boardPickInfo.hit)
+                return;
+            let pointerInfo = uiHelper.getPointerInfo(boardPickInfo);
+            let pos = pointerInfo.pos;
             switch (boardStatus) {
                 case BOARD_STATUS_CHECKING:
                 case BOARD_STATUS_PLAYING:
-                    if (piecePickInfo.hit) {
-                        uiHelper.highlightPiece(piecePickInfo.pickedMesh,
-                            BABYLON.Color3.Green(), true)
-                    } else {
-                        uiHelper.unHighlightLastPiece();
+                    if (pointerInfo.onPiece)
+                        uiHelper.highlightPiece(pos.x, pos.y,
+                            BABYLON.Color3.Green(), 0);
+                    else if (pointerInfo.onBoard)
+                        uiHelper.unHighlightLastHover(0);
+                    break;
+                case BOARD_STATUS_PIECE_PICKED:
+                    // 0 to light pos, 1 to light piece
+                    let whichToLight = -1;
+                    if (pointerInfo.onPiece) {
+                        if (pointerInfo.piece != pickingInfo.mesh &&
+                            boardHelper.canMoveTo(
+                                pickingInfo.x, pickingInfo.y, pos.x, pos.y, chessBoard))
+                            whichToLight = 1;
+                    } else if (pointerInfo.onBoard) {
+                        if (boardHelper.canMoveTo(pickingInfo.x, pickingInfo.y, pos.x, pos.y, chessBoard))
+                            whichToLight = 0;
+                    }
+                    if (whichToLight == 1)
+                        uiHelper.highlightPiece(pos.x, pos.y,
+                            BABYLON.Color3.Black(), 1);
+                    else if (whichToLight == 0)
+                        uiHelper.highlightPos(boardPickInfo.pickedPoint);
+                    else {
+                        uiHelper.unHighlightLastHover(1);
+                        uiHelper.unHighlightPos();
                     }
                     break;
                 case BOARD_STATUS_DECHECKING:
-                case BOARD_STATUS_PIECE_PICKED:
-                    let boardPickInfo = scene.pick(
-                        scene.pointerX, scene.pointerY, (mesh) => {
-                            return mesh == boardRedBox || mesh == boardBlueBox;
-                        }
-                    );
-                    if (boardPickInfo.hit) {
-                        let pos = uiHelper.pos3d2BoardPos(boardPickInfo.pickedPoint);
-                        console.log("pos", pos);
-                        let pickedPiece = chessBoardMeshes[pos.x][pos.y];
-                        let whichToLight = -1;
-                        if (pickedPiece != null) {
-                            if (pickedPiece != pickingInfo.pickedMesh &&
-                                canMoveTo(pickingInfo.x, pickingInfo.y, pos.x, pos.y, chessBoard)) {
-                                whichToLight = 1;
-                            }
-                        } else {
-                            if (canMoveTo(pickingInfo.x, pickingInfo.y, pos.x, pos.y, chessBoard))
-                                whichToLight = 0;
-                        }
-                        if (whichToLight == 1)
-                            uiHelper.highlightPiece(pickedPiece, BABYLON.Color3.Black(), true);
-                        else if (whichToLight == 0)
-                            uiHelper.highlightPos(boardPickInfo.pickedPoint);
-                        else {
-                            uiHelper.unHighlightPos();
-                        }
-                    }
+                    // TODO
                     break;
                 default:
                     console.warn("INVALID BOARD STATUS");
@@ -560,19 +592,39 @@ var createScene = function () {
         }
 
         function pointerDown(pickInfo) {
-            // TODO
-            if (boardStatus == BOARD_STATUS_PLAYING) {
-                if (pieceMeshSet.has(pickInfo.pickedMesh)) {
-                    let pos = uiHelper.pos3d2BoardPos(pickInfo.pickedPoint);
-                    pickingInfo.pickedMesh = pickInfo.pickedMesh;
-                    pickingInfo.x = pos.x, pickingInfo.y = pos.y;
-                    uiHelper.highlightPiece(pickInfo.pickedMesh,
-                        BABYLON.Color3.Green(), true);
-                    boardStatus = BOARD_STATUS_PIECE_PICKED;
+            let boardPickInfo = scene.pick(
+                scene.pointerX, scene.pointerY, (mesh) => {
+                    return mesh == boardRedBox || mesh == boardBlueBox;
                 }
-            }
-            if (boardStatus == BOARD_STATUS_PIECE_PICKED) {
-
+            );
+            if (!boardPickInfo.hit)
+                return;
+            let pointerInfo = uiHelper.getPointerInfo(boardPickInfo);
+            let pos = pointerInfo.pos;
+            switch (boardStatus) {
+                case BOARD_STATUS_PLAYING:
+                    pickingInfo.mesh = pickInfo.pickedMesh;
+                    pickingInfo.x = pos.x, pickingInfo.y = pos.y;
+                    if (pointerInfo.onPiece) {
+                        uiHelper.highlightPiece(pos.x, pos.y, BABYLON.Color3.Green(), 0);
+                        boardStatus = BOARD_STATUS_PIECE_PICKED;
+                    }
+                    break;
+                case BOARD_STATUS_PIECE_PICKED:
+                    if (pointerInfo.piece == pickingInfo.mesh) {
+                        uiHelper.unHighlightPiece(pos.x, pos.y);
+                        boardStatus = BOARD_STATUS_PLAYING;
+                    } else if (boardHelper.canMoveTo(
+                        pickingInfo.x, pickingInfo.y, pos.x, pos.y, chessBoard)) {
+                    }
+                    break;
+                case BOARD_STATUS_CHECKING:
+                    boardStatus = BOARD_STATUS_DECHECKING;
+                    break;
+                case BOARD_STATUS_DECHECKING:
+                    break;
+                default:
+                    console.warn("INVALID BOARD STATUS");
             }
         }
 

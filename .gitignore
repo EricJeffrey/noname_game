@@ -4,4 +4,4 @@ tmp.*
 babylon.*
 **/node_modules/
 
-frontend/js/5.0.0/
+frontend/js/
