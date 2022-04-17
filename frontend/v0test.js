@@ -2,6 +2,8 @@
 
 var createScene = function () {
 
+    // ############################ Chess Mechianism ############################
+
     const PIECE_TYPE_CAR = "CAR";
     const PIECE_TYPE_HORSE = "HORSE";
     const PIECE_TYPE_ELEPHANT = "ELEPHANT";
@@ -278,40 +280,43 @@ var createScene = function () {
             }
             return false;
         }
-        var boardHelper = { canMoveTo, isChecked, moveTo, canDeCheckmate };
+        var boardHelper = { canMoveTo, isChecked, moveTo, canDeCheckmate, chessBoard };
+        // DEBUG
+        window.boardHelper = boardHelper;
     }
 
-    // babylon game mechanism
+    // ############################ BabylonJs UI Mechianism ############################
+
     const PIECE_SIZE = 4;
     const BOARD_PLANE_Y = 2;
     const BOARD_WIDTH = PIECE_SIZE * 9;
     const BOARD_HALF_DEPTH = PIECE_SIZE * 5;
     const BOARD_RIVER_DEPTH = 2 * PIECE_SIZE;
 
-    var scene = new BABYLON.Scene(engine);
-    var chessBoardUIObjs = [];
-
     // !!! NO Nested Object !!!
-    var pickingInfo = {
+    var curPickingInfo = {
         mesh: null,
         x: 0, y: 0,
     };
+    var chessBoardUIObjs = [];
+    var scene = new BABYLON.Scene(engine);
     {
         // camera ground light
         {
+            // scene.createDefaultCameraOrLight(true, true, true);
             var camera = new BABYLON.ArcRotateCamera(
-                "camera",
-                -Math.PI / 2, Math.PI / 5, 60,
-                new BABYLON.Vector3(18, 2, 18), scene);
+                "camera", -Math.PI / 2, Math.PI / 7, 60, new BABYLON.Vector3(18, 2, 18), scene);
             camera.attachControl(canvas, true);
-
-            var light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 10, 0), scene);
+            var light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(-20, 100, 0), scene);
             light.intensity = 0.5;
 
             var ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 600, height: 600 }, scene);
             ground.position.y = -0.1;
             var gridMat = new BABYLON.GridMaterial("gridMat", scene);
             ground.material = gridMat;
+            // Glow layer
+            var gl = new BABYLON.GlowLayer("glow", scene);
+            gl.intensity = 0.3;
 
             // DEBUG light beam
             {
@@ -417,11 +422,73 @@ var createScene = function () {
             }
         }
 
+        function buildBoomSPS(model, scene) {
+            const gravity = -0.05;                // gravity
+            const radius = 2;                     // explosion radius
+            const speed = 0.1;           // particle max speed
+            const minY = -10;
+            const numOfParticle = 30;
+
+            // initialize SPS
+            var sps = new BABYLON.SolidParticleSystem("sps", scene, { isPickable: true });
+            sps.digest(model, { number: numOfParticle });
+            model.dispose();
+            var digestedMesh = sps.buildMesh();
+            digestedMesh.material = model.material;
+            digestedMesh.position = model.position;
+            sps.setParticles();
+            sps.refreshVisibleSize();
+            sps.vars = {
+                target: BABYLON.Vector3.Zero(),
+                tmp: BABYLON.Vector3.Zero(),
+                justClicked: false,
+                radius: radius,
+                minY: minY,
+                boom: false,
+            };
+            var beforeRender = () => sps.setParticles();
+            // set update function of each particles
+            sps.updateParticle = function (p) {
+                console.log("updateParticle", sps.vars)
+                if (sps.vars.justClicked) {
+                    p.position.subtractToRef(sps.vars.target, sps.vars.tmp);
+                    var len = sps.vars.tmp.length();
+                    var scl = (len < 0.001) ? 1.0 : sps.vars.radius / len;
+                    sps.vars.tmp.normalize();
+                    p.velocity.x += sps.vars.tmp.x * scl * speed * (1 + Math.random() * 0.3);
+                    p.velocity.y += sps.vars.tmp.y * scl * speed * (1 + Math.random() * 0.3);
+                    p.velocity.z += sps.vars.tmp.z * scl * speed * (1 + Math.random() * 0.3);
+                    p.rand = Math.random() / 100;
+                    if (p.idx == sps.nbParticles - 1)
+                        sps.vars.justClicked = false;
+                }
+                if (sps.vars.boom && !sps.vars.justClicked) {
+                    if (p.position.y < sps.vars.minY) {
+                        p.position.y = sps.vars.minY;
+                        p.velocity.setAll(0);
+                    } else {
+                        p.velocity.y += gravity;
+                        p.position.addInPlace(p.velocity);
+                        p.rotation.x += (p.velocity.z) * p.rand;
+                        p.rotation.y += (p.velocity.x) * p.rand;
+                        p.rotation.z += (p.velocity.y) * p.rand;
+                    }
+                }
+            };
+            function boomFrom(center) {
+                scene.registerBeforeRender(beforeRender);
+                // TODO where unregiseter?
+                sps.vars.boom = true;
+                sps.vars.target = center;
+                sps.vars.justClicked = true;
+            }
+            return { sps, digestedMesh, boomFrom };
+        }
         var pieceMeshSet = new Set();
         // draw piece
         {
             var calcPiecePos = (i, j) => {
-                var lbPos = new BABYLON.Vector3(0, BOARD_PLANE_Y + PIECE_SIZE / 4, 0);
+                var lbPos = new BABYLON.Vector3(0, BOARD_PLANE_Y + PIECE_SIZE / 2 + 2, 0);
                 if (j >= 5)
                     lbPos.z = BOARD_HALF_DEPTH - PIECE_SIZE / 2 + BOARD_RIVER_DEPTH + PIECE_SIZE / 2;
                 lbPos.x += i * PIECE_SIZE;
@@ -438,12 +505,14 @@ var createScene = function () {
                     pieceInfo.belong == CAMP_BLUE ? "blue" : "red",
                     true, true
                 );
-                var piece = BABYLON.MeshBuilder.CreateBox("p", { size: PIECE_SIZE / 2 })
+                var piece = BABYLON.MeshBuilder.CreateTorusKnot("tk", { radius: 1, tube: 0.3, radialSegments: 128 });
                 var pieceMat = new BABYLON.StandardMaterial("pmat", scene);
                 pieceMat.diffuseTexture = pieceText;
                 piece.material = pieceMat;
                 piece.position = pos3d;
-                return piece;
+                // return piece;
+                return buildBoomSPS(piece, scene);
+
             };
             for (let i = 0; i < chessBoard.length; i++) {
                 chessBoardUIObjs.push([]);
@@ -451,13 +520,13 @@ var createScene = function () {
                     chessBoardUIObjs[i].push({ mesh: null });
                     if (chessBoard[i][j].pieceType != null) {
                         let pos3d = calcPiecePos(i, j);
-                        var piece = drawPiece(chessBoard[i][j], pos3d);
-                        // chessBoard[i][j].mesh = piece;
+                        var sps = drawPiece(chessBoard[i][j], pos3d);
                         chessBoardUIObjs[i][j] = {
-                            mesh: piece,
-                            color: piece.material.diffuseColor
+                            mesh: sps.digestedMesh,
+                            color: sps.digestedMesh.material.emissiveColor,
+                            sps: sps,
                         };
-                        pieceMeshSet.add(piece);
+                        pieceMeshSet.add(sps.digestedMesh);
                     }
                 }
             }
@@ -467,7 +536,7 @@ var createScene = function () {
         {
             hintBox.visibility = 0.3;
             let hintMat = new BABYLON.StandardMaterial("hintmat", scene);
-            hintMat.emissiveColor = new BABYLON.Color3(0, 0.16, 0.26);
+            hintMat.emissiveColor = new BABYLON.Color3(0, 0.49, 0.8);
             hintBox.material = hintMat;
         }
 
@@ -488,13 +557,13 @@ var createScene = function () {
                         unHighlightPiece(lastHoverPICKING.x, lastHoverPICKING.y);
                     lastHoverPICKING.x = x, lastHoverPICKING.y = y;
                 }
-                mesh.material.diffuseColor = color;
+                mesh.material.emissiveColor = color;
             }
             function unHighlightPiece(x, y) {
                 let mesh = chessBoardUIObjs[x][y].mesh;
                 let color = chessBoardUIObjs[x][y].color;
                 if (mesh != null)
-                    mesh.material.diffuseColor = color;
+                    mesh.material.emissiveColor = color;
             }
             // unhighlight last hover pos, onwhich == 0 for PLAYING, 1 for PICKING
             function unHighlightLastHover(onWhich) {
@@ -529,56 +598,88 @@ var createScene = function () {
             function checkPos2d(x, y) {
                 return x >= 0 && y >= 0 && x <= 8 && y <= 9;
             }
-            function getPointerInfo(boardPickInfo) {
-                let pos = uiHelper.pos3d2BoardPos(boardPickInfo.pickedPoint);
-                let onBoard = uiHelper.checkPos2d(pos.x, pos.y);
-                let onPiece = onBoard && chessBoardUIObjs[pos.x][pos.y].mesh != null;
-                let piece = onPiece ? chessBoardUIObjs[pos.x][pos.y].mesh : null;
-                return { pos, onBoard, onPiece, piece };
+            function getPointerInfo() {
+                let boardPickInfo = scene.pick(
+                    scene.pointerX, scene.pointerY, (mesh) => {
+                        return mesh == boardRedBox || mesh == boardBlueBox;
+                    }
+                );
+                let piecePickInfo = scene.pick(
+                    scene.pointerX, scene.pointerY, (mesh) => pieceMeshSet.has(mesh)
+                );
+                let hitBoard = boardPickInfo.hit;
+                let posOnBoard = hitBoard ? uiHelper.pos3d2BoardPos(boardPickInfo.pickedPoint) : null;
+                let onBoard = hitBoard ? uiHelper.checkPos2d(posOnBoard.x, posOnBoard.y) : false;
+                let posHasPiece = onBoard ?
+                    chessBoardUIObjs[posOnBoard.x][posOnBoard.y].mesh != null :
+                    false;
+                let onPiece = piecePickInfo.hit;
+                let piece = onPiece ?
+                    piecePickInfo.pickedMesh :
+                    posHasPiece ? chessBoardUIObjs[posOnBoard.x][posOnBoard.y].mesh : null;
+                let posOfPiece = onPiece ? uiHelper.pos3d2BoardPos(piece.position) : null;
+                let pickedPoint = boardPickInfo.pickedPoint;
+                return {
+                    hitBoard, onBoard, posOnBoard, posHasPiece, pickedPoint,
+                    hitPiece: onPiece, onPiece, piece, posOfPiece,
+                };
             }
+
+            // boom a piece mesh at (x, y)
+            function killPiece(x, y) {
+                let mesh = chessBoardUIObjs[x][y].mesh;
+                console.log("killPiece, mesh:", mesh);
+                chessBoardUIObjs[x][y].sps.boomFrom(BABYLON.Vector3.Zero());
+            }
+            // move a piece mesh from (x1, y1) to (x2, y2)
+            function movePiece(x1, y1, x2, y2) {
+            }
+
             return {
                 highlightPiece, unHighlightPiece, unHighlightLastHover, highlightPos,
-                pos3d2BoardPos, unHighlightPos, checkPos2d, getPointerInfo
+                pos3d2BoardPos, unHighlightPos, checkPos2d, getPointerInfo,
+                killPiece, movePiece
             };
         })();
 
         function pointerMove() {
-            let boardPickInfo = scene.pick(
-                scene.pointerX, scene.pointerY, (mesh) => {
-                    return mesh == boardRedBox || mesh == boardBlueBox;
-                }
-            );
-            if (!boardPickInfo.hit)
+            let pickInfo = uiHelper.getPointerInfo();
+            if (!pickInfo.onBoard && !pickInfo.hitPiece)
                 return;
-            let pointerInfo = uiHelper.getPointerInfo(boardPickInfo);
-            let pos = pointerInfo.pos;
+            let pos = (pickInfo.hitPiece ? pickInfo.posOfPiece : pickInfo.posOnBoard);
             switch (boardStatus) {
                 case BOARD_STATUS_CHECKING:
                 case BOARD_STATUS_PLAYING:
-                    if (pointerInfo.onPiece)
+                    if (pickInfo.hitPiece)
                         uiHelper.highlightPiece(pos.x, pos.y,
                             BABYLON.Color3.Green(), 0);
-                    else if (pointerInfo.onBoard)
+                    else if (pickInfo.onBoard)
                         uiHelper.unHighlightLastHover(0);
                     break;
                 case BOARD_STATUS_PIECE_PICKED:
-                    // 0 to light pos, 1 to light piece
-                    let whichToLight = -1;
-                    if (pointerInfo.onPiece) {
-                        if (pointerInfo.piece != pickingInfo.mesh &&
-                            boardHelper.canMoveTo(
-                                pickingInfo.x, pickingInfo.y, pos.x, pos.y, chessBoard))
-                            whichToLight = 1;
-                    } else if (pointerInfo.onBoard) {
-                        if (boardHelper.canMoveTo(pickingInfo.x, pickingInfo.y, pos.x, pos.y, chessBoard))
-                            whichToLight = 0;
-                    }
-                    if (whichToLight == 1)
+                    let gotOne = false;
+                    if (pickInfo.hitPiece &&
+                        pickInfo.piece != curPickingInfo.mesh &&
+                        boardHelper.canMoveTo(
+                            curPickingInfo.x, curPickingInfo.y, pos.x, pos.y, chessBoard)) {
                         uiHelper.highlightPiece(pos.x, pos.y,
-                            BABYLON.Color3.Black(), 1);
-                    else if (whichToLight == 0)
-                        uiHelper.highlightPos(boardPickInfo.pickedPoint);
-                    else {
+                            BABYLON.Color3.Yellow(), 1);
+                        gotOne = true;
+                    } else if (pickInfo.onBoard &&
+                        pickInfo.posHasPiece &&
+                        boardHelper.canMoveTo(
+                            curPickingInfo.x, curPickingInfo.y,
+                            pickInfo.posOnBoard.x, pickInfo.posOnBoard.y, chessBoard)) {
+                        uiHelper.highlightPiece(pickInfo.posOnBoard.x, pickInfo.posOnBoard.y,
+                            BABYLON.Color3.Yellow(), 1);
+                        gotOne = true;
+                    }
+                    else if (pickInfo.onBoard &&
+                        boardHelper.canMoveTo(curPickingInfo.x, curPickingInfo.y, pos.x, pos.y, chessBoard)) {
+                        uiHelper.highlightPos(pickInfo.pickedPoint);
+                        gotOne = true;
+                    }
+                    if (!gotOne) {
                         uiHelper.unHighlightLastHover(1);
                         uiHelper.unHighlightPos();
                     }
@@ -591,31 +692,37 @@ var createScene = function () {
             }
         }
 
-        function pointerDown(pickInfo) {
-            let boardPickInfo = scene.pick(
-                scene.pointerX, scene.pointerY, (mesh) => {
-                    return mesh == boardRedBox || mesh == boardBlueBox;
-                }
-            );
-            if (!boardPickInfo.hit)
+        function pointerDown() {
+            // let boardPickInfo = scene.pick(
+            //     scene.pointerX, scene.pointerY, (mesh) => {
+            //         return mesh == boardRedBox || mesh == boardBlueBox;
+            //     }
+            // );
+            let pickInfo = uiHelper.getPointerInfo();
+            if (!pickInfo.onBoard && !pickInfo.onPiece)
                 return;
-            let pointerInfo = uiHelper.getPointerInfo(boardPickInfo);
-            let pos = pointerInfo.pos;
+            let pos = (pickInfo.hitPiece ? pickInfo.posOfPiece : pickInfo.posOnBoard);
             switch (boardStatus) {
                 case BOARD_STATUS_PLAYING:
-                    pickingInfo.mesh = pickInfo.pickedMesh;
-                    pickingInfo.x = pos.x, pickingInfo.y = pos.y;
-                    if (pointerInfo.onPiece) {
+                    curPickingInfo.mesh = pickInfo.piece;
+                    curPickingInfo.x = pos.x, curPickingInfo.y = pos.y;
+                    if (pickInfo.onPiece) {
                         uiHelper.highlightPiece(pos.x, pos.y, BABYLON.Color3.Green(), 0);
                         boardStatus = BOARD_STATUS_PIECE_PICKED;
                     }
                     break;
                 case BOARD_STATUS_PIECE_PICKED:
-                    if (pointerInfo.piece == pickingInfo.mesh) {
-                        uiHelper.unHighlightPiece(pos.x, pos.y);
-                        boardStatus = BOARD_STATUS_PLAYING;
-                    } else if (boardHelper.canMoveTo(
-                        pickingInfo.x, pickingInfo.y, pos.x, pos.y, chessBoard)) {
+                    if (pickInfo.onPiece) {
+                        if (pickInfo.piece == curPickingInfo.mesh) {
+                            uiHelper.unHighlightPiece(pos.x, pos.y);
+                            boardStatus = BOARD_STATUS_PLAYING;
+                        } else if (boardHelper.canMoveTo(
+                            curPickingInfo.x, curPickingInfo.y, pos.x, pos.y, chessBoard)) {
+                            // TODO eat the piece
+                            uiHelper.killPiece(pos.x, pos.y);
+                        }
+                    } else if (pickInfo.onBoard) {
+                        // TODO move to the pos
                     }
                     break;
                 case BOARD_STATUS_CHECKING:
