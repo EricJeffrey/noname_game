@@ -258,6 +258,7 @@ var createScene = function () {
 
         // if move piece at (x1,y1) to (x2,y2) can help the king
         let canDeCheckmate = function (x1, y1, x2, y2, chessBoard) {
+            // FIXME sometime does not work
             let pieceInfo = chessBoard[x1][y1];
             if (pieceInfo.belong == curCamp &&
                 boardHelper.canMoveTo(x1, y1, x2, y2, chessBoard)) {
@@ -300,7 +301,7 @@ var createScene = function () {
 
     const PIECE_SIZE = 4;
     const BOARD_PLANE_Y = 2;
-    const BOARD_PIECE_INTER = 0.5;
+    const BOARD_PIECE_INTER = 0;
     const BOARD_WIDTH = PIECE_SIZE * 9;
     const BOARD_HALF_DEPTH = PIECE_SIZE * 5;
     const BOARD_RIVER_DEPTH = 1 * PIECE_SIZE;
@@ -317,7 +318,7 @@ var createScene = function () {
         {
             // scene.createDefaultCameraOrLight(true, true, true);
             var camera = new BABYLON.ArcRotateCamera(
-                "camera", -Math.PI / 2, Math.PI / 20, 60, new BABYLON.Vector3(18, 2, 19.5), scene);
+                "camera", -Math.PI / 2, Math.PI / 5, 60, new BABYLON.Vector3(18, 2, 19.5), scene);
             camera.attachControl(canvas, true);
             var light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(-20, 100, 0), scene);
             light.intensity = 0.5;
@@ -338,6 +339,43 @@ var createScene = function () {
                 zeroBox.material = zeroMat;
                 zeroBox.position = BABYLON.Vector3.Zero();
             }
+        }
+
+        // status board
+        {
+            var statusBoard = (function () {
+                const STATUS_BOARD_WIDTH = 16, STATUS_BOARD_HEIGHT = 6;
+                var width = 600, height = 600;
+                var font_type = " 微软雅黑";
+
+                var boardBox = BABYLON.MeshBuilder.CreateBox("statusb",
+                    { width: STATUS_BOARD_WIDTH, height: STATUS_BOARD_HEIGHT, depth: 1 },
+                    scene);
+                boardBox.position = new BABYLON.Vector3(
+                    BOARD_WIDTH + STATUS_BOARD_WIDTH / 2, STATUS_BOARD_HEIGHT / 2, BOARD_HALF_DEPTH * 2);
+                boardBox.rotate(BABYLON.Axis.X, Math.PI / 6);
+                var statusText = new BABYLON.DynamicTexture(
+                    "statusDyText", { width: width, height: height }, scene);
+                var statusMat = new BABYLON.StandardMaterial("smat", scene);
+                statusMat.emissiveTexture = statusText;
+                boardBox.material = statusMat;
+
+                let updateText = (text) => {
+                    console.log("here, text", text, "curcamp", curCamp);
+                    //Check width of text for given font type at any size of font
+                    let ctx = statusText.getContext();
+                    let size = 12; //any value will work
+                    ctx.font = "bold " + size + "px " + font_type;
+                    let textWidth = ctx.measureText(text).width;
+                    let ratio = textWidth / size;
+                    let font_size = Math.floor(width / (ratio * 1));
+                    let font = font_size + "px " + font_type;
+                    statusText.drawText(text, null, null, font, "black", "white", true, true);
+                };
+
+                return { boardBox, updateText };
+            })();
+            statusBoard.updateText((curCamp == CAMP_BLUE ? "蓝方" : "红方") + "回合");
         }
 
         var boardBlueBox, boardRedBox;;
@@ -553,7 +591,8 @@ var createScene = function () {
 
         var hintBox = BABYLON.MeshBuilder.CreateBox("hint", { size: 2 * PIECE_SIZE / 3, height: 0.2 });
         {
-            hintBox.visibility = 0.3;
+            hintBox.position = new BABYLON.Vector3(0, BOARD_PLANE_Y + 0.1, 0);
+            hintBox.visibility = 0;
             let hintMat = new BABYLON.StandardMaterial("hintmat", scene);
             hintMat.emissiveColor = new BABYLON.Color3(0, 0.49, 0.8);
             hintBox.material = hintMat;
@@ -602,10 +641,10 @@ var createScene = function () {
                 if (onWhich = 0) lastHoverPLAY = { x: null, y: null };
                 if (onWhich = 1) lastHoverPICKING = { x: null, y: null };
             }
-            function highlightPos(pos3d) {
-                let x = Math.round(pos3d.x / PIECE_SIZE) * PIECE_SIZE;
-                let y = Math.round(pos3d.z / PIECE_SIZE) * PIECE_SIZE;
-                hintBox.position = new BABYLON.Vector3(x, BOARD_PLANE_Y, y);
+            function highlightPos(x, y) {
+                let pos3d = boardPos2Pos3d(x, y);
+                hintBox.position.x = pos3d.x;
+                hintBox.position.z = pos3d.z;
                 hintBox.visibility = 0.5;
             }
             function pos3d2BoardPos(pos3d) {
@@ -613,7 +652,7 @@ var createScene = function () {
                     let x = pos3d.x, y = pos3d.z;
                     x = Math.round(x / PIECE_SIZE);
                     y = Math.round(y / PIECE_SIZE);
-                    if (y > 4) y = y - BOARD_RIVER_DEPTH / PIECE_SIZE;
+                    if (y >= 6) y = y - BOARD_RIVER_DEPTH / PIECE_SIZE;
                     return { x, y };
                 }
                 return null;
@@ -725,7 +764,7 @@ var createScene = function () {
                     }
                     else if (pickInfo.onBoard &&
                         boardHelper.canMoveTo(curPick.x, curPick.y, pos.x, pos.y, chessBoard)) {
-                        uiHelper.highlightPos(pickInfo.pickedPoint);
+                        uiHelper.highlightPos(pos.x, pos.y);
                         gotOne = true;
                     }
                     if (!gotOne) {
@@ -766,10 +805,14 @@ var createScene = function () {
 
                     // check is checkmate
                     let checking = boardHelper.doOneMove(x1, y1, x2, y2, chessBoard);
-                    if (checking)
+                    if (checking) {
+                        statusBoard.updateText("将军");
                         boardStatus = BOARD_STATUS_CHECKING;
-                    else
+                    }
+                    else {
+                        statusBoard.updateText((curCamp == CAMP_BLUE ? "蓝方" : "红方") + "回合");
                         boardStatus = BOARD_STATUS_PLAYING;
+                    }
                 };
                 uiHelper.movePiece(x1, y1, x2, y2, ease, onAnimEnd);
             };
