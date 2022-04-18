@@ -129,8 +129,7 @@ var createScene = function () {
                 if (x1 >= 3 && x1 <= 5 && x2 >= 3 && x2 <= 5) {
                     if ((y1 <= 2 && y2 <= 2) || (y1 >= 7 && y2 >= 7)) {
                         let absx = Math.abs(x1 - x2), absy = Math.abs(y1 - y2);
-                        if (absx == 1 && absy == 1 &&
-                            chessBoard[x2][y2].pieceType == null)
+                        if (absx == 1 && absy == 1)
                             return true;
                     }
                 }
@@ -140,8 +139,7 @@ var createScene = function () {
                 if (x1 >= 3 && x1 <= 5 && x2 >= 3 && x2 <= 5) {
                     if ((y1 <= 2 && y2 <= 2) || (y1 >= 7 && y2 >= 7)) {
                         let absx = Math.abs(x1 - x2), absy = Math.abs(y1 - y2);
-                        if (absx + absy <= 1 &&
-                            chessBoard[x2][y2].pieceType == null)
+                        if (absx + absy <= 1)
                             return true;
                     }
                 }
@@ -174,7 +172,7 @@ var createScene = function () {
             };
             function canSoldierMoveTo(x1, y1, x2, y2, chessBoard) {
                 let pieceInfo = chessBoard[x1][y1];
-                if (pieceInfo.belong == CAMP_BLUE && y1 < 4)
+                if (pieceInfo.belong == CAMP_BLUE && y1 <= 4)
                     return x1 == x2 && y2 - y1 == 1;
                 if (pieceInfo.belong == CAMP_RED && y1 > 4)
                     return x1 == x2 && y1 - y2 == 1;
@@ -259,7 +257,8 @@ var createScene = function () {
         }
 
         // if move piece at (x1,y1) to (x2,y2) can help the king
-        let canDeCheckmate = function (x1, y1, x2, y2) {
+        let canDeCheckmate = function (x1, y1, x2, y2, chessBoard) {
+            let pieceInfo = chessBoard[x1][y1];
             if (pieceInfo.belong == curCamp &&
                 boardHelper.canMoveTo(x1, y1, x2, y2, chessBoard)) {
                 let tmpBoard = [];
@@ -267,7 +266,7 @@ var createScene = function () {
                     tmpBoard.push([]);
                     for (let j = 0; j < chessBoard[i].length; j++) {
                         let tmp = {};
-                        tmpBoard.push(Object.assign(tmp, chessBoard[i][j]));
+                        tmpBoard[i].push(Object.assign(tmp, chessBoard[i][j]));
                     }
                 }
                 var posOfKing = {};
@@ -307,7 +306,7 @@ var createScene = function () {
     const BOARD_RIVER_DEPTH = 1 * PIECE_SIZE;
 
     // !!! NO Nested Object !!!
-    var curPickingInfo = {
+    var curPick = {
         mesh: null,
         x: 0, y: 0,
     };
@@ -318,7 +317,7 @@ var createScene = function () {
         {
             // scene.createDefaultCameraOrLight(true, true, true);
             var camera = new BABYLON.ArcRotateCamera(
-                "camera", -Math.PI / 2, Math.PI / 20, 60, new BABYLON.Vector3(18, 2, 21), scene);
+                "camera", -Math.PI / 2, Math.PI / 20, 60, new BABYLON.Vector3(18, 2, 19.5), scene);
             camera.attachControl(canvas, true);
             var light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(-20, 100, 0), scene);
             light.intensity = 0.5;
@@ -592,8 +591,8 @@ var createScene = function () {
                     lastHoverPLAY.x = null;
                 }
                 if (onWhich == 1 && lastHoverPICKING.x != null) {
-                    if (lastHoverPICKING.x != curPickingInfo.x ||
-                        lastHoverPICKING.y != curPickingInfo.y) {
+                    if (lastHoverPICKING.x != curPick.x ||
+                        lastHoverPICKING.y != curPick.y) {
                         unHighlightPiece(lastHoverPICKING.x, lastHoverPICKING.y);
                         lastHoverPICKING.x = null;
                     }
@@ -674,7 +673,7 @@ var createScene = function () {
                     console.warn("Can not movePiece, no piece at pos:", x, y);
                     return;
                 }
-                let easeFunc = ease ? new BABYLON.PowerEase(4) : null;
+                let easeFunc = (ease ? new BABYLON.PowerEase(4) : null);
                 BABYLON.Animation.CreateAndStartAnimation(
                     "tanim", mesh, "position", 60, 40,
                     mesh.position, boardPos2Pos3d(x2, y2),
@@ -697,7 +696,6 @@ var createScene = function () {
             let pos = (pickInfo.hitPiece ? pickInfo.posOfPiece : pickInfo.posOnBoard);
             switch (boardStatus) {
                 case BOARD_STATUS_CHECKING:
-                    console.log("DEBUG: CHECKING");
                 case BOARD_STATUS_PLAYING:
                     if (pickInfo.hitPiece && pickInfo.pieceBelong == curCamp)
                         uiHelper.highlightPiece(pos.x, pos.y,
@@ -705,26 +703,28 @@ var createScene = function () {
                     else if (pickInfo.onBoard)
                         uiHelper.unHighlightLastHover(0);
                     break;
+                case BOARD_STATUS_DECHECKING:
                 case BOARD_STATUS_PIECE_PICKED:
+                    // FIXME shuold not move if the move makes checkmate
                     let gotOne = false;
                     if (pickInfo.hitPiece &&
-                        pickInfo.piece != curPickingInfo.mesh &&
+                        pickInfo.piece != curPick.mesh &&
                         boardHelper.canMoveTo(
-                            curPickingInfo.x, curPickingInfo.y, pos.x, pos.y, chessBoard)) {
+                            curPick.x, curPick.y, pos.x, pos.y, chessBoard)) {
                         uiHelper.highlightPiece(pos.x, pos.y,
                             BABYLON.Color3.Yellow(), 1);
                         gotOne = true;
                     } else if (pickInfo.onBoard &&
                         pickInfo.posHasPiece &&
                         boardHelper.canMoveTo(
-                            curPickingInfo.x, curPickingInfo.y,
+                            curPick.x, curPick.y,
                             pickInfo.posOnBoard.x, pickInfo.posOnBoard.y, chessBoard)) {
                         uiHelper.highlightPiece(pickInfo.posOnBoard.x, pickInfo.posOnBoard.y,
                             BABYLON.Color3.Yellow(), 1);
                         gotOne = true;
                     }
                     else if (pickInfo.onBoard &&
-                        boardHelper.canMoveTo(curPickingInfo.x, curPickingInfo.y, pos.x, pos.y, chessBoard)) {
+                        boardHelper.canMoveTo(curPick.x, curPick.y, pos.x, pos.y, chessBoard)) {
                         uiHelper.highlightPos(pickInfo.pickedPoint);
                         gotOne = true;
                     }
@@ -732,9 +732,6 @@ var createScene = function () {
                         uiHelper.unHighlightLastHover(1);
                         uiHelper.unHighlightPos();
                     }
-                    break;
-                case BOARD_STATUS_DECHECKING:
-                    // TODO
                     break;
                 case BOARD_STATUS_DO_MOVING:
                     break;
@@ -748,58 +745,77 @@ var createScene = function () {
             if (!pickInfo.onBoard && !pickInfo.hitPiece)
                 return;
             let pos = (pickInfo.hitPiece ? pickInfo.posOfPiece : pickInfo.posOnBoard);
+
+            let setCurPick = () => {
+                curPick.mesh = pickInfo.piece;
+                curPick.x = pos.x, curPick.y = pos.y;
+                uiHelper.highlightPiece(pos.x, pos.y, BABYLON.Color3.Green(), 0);
+            };
+            let doMove = (x1, y1, x2, y2, ease = true) => {
+                boardStatus = BOARD_STATUS_DO_MOVING;
+                let onAnimEnd = () => {
+                    // ui update
+                    if (chessBoardUIObjs[x2][y2].mesh != null)
+                        uiHelper.killPiece(x2, y2);
+                    chessBoardUIObjs[x2][y2] = chessBoardUIObjs[x1][y1];
+                    chessBoardUIObjs[x1][y1] = { mesh: null };
+                    uiHelper.unHighlightPiece(x2, y2);
+                    uiHelper.unHighlightPos();
+                    uiHelper.clearLastHover();
+                    curPick.x = curPick.y = null;
+
+                    // check is checkmate
+                    let checking = boardHelper.doOneMove(x1, y1, x2, y2, chessBoard);
+                    if (checking)
+                        boardStatus = BOARD_STATUS_CHECKING;
+                    else
+                        boardStatus = BOARD_STATUS_PLAYING;
+                };
+                uiHelper.movePiece(x1, y1, x2, y2, ease, onAnimEnd);
+            };
+
             switch (boardStatus) {
                 case BOARD_STATUS_PLAYING:
-                    // FIXME only curCamp == belong is pickable
-                    curPickingInfo.mesh = pickInfo.piece;
-                    curPickingInfo.x = pos.x, curPickingInfo.y = pos.y;
                     if (pickInfo.hitPiece && pickInfo.pieceBelong == curCamp) {
+                        setCurPick();
                         boardStatus = BOARD_STATUS_PIECE_PICKED;
-                        uiHelper.highlightPiece(pos.x, pos.y, BABYLON.Color3.Green(), 0);
                     }
                     break;
                 case BOARD_STATUS_PIECE_PICKED:
-                    let doMove = (x1, y1, x2, y2, ease = true) => {
-                        boardStatus = BOARD_STATUS_DO_MOVING;
-                        let onAnimEnd = () => {
-                            // ui update
-                            if (chessBoardUIObjs[x2][y2].mesh != null)
-                                uiHelper.killPiece(x2, y2);
-                            chessBoardUIObjs[x2][y2] = chessBoardUIObjs[x1][y1];
-                            chessBoardUIObjs[x1][y1] = { mesh: null };
-                            uiHelper.unHighlightPiece(x2, y2);
-                            uiHelper.unHighlightPos();
-                            uiHelper.clearLastHover();
-                            curPickingInfo.x = { x: null, y: null, mesh: null };
-
-                            // check is checkmate
-                            let checking = boardHelper.doOneMove(x1, y1, x2, y2, chessBoard);
-                            if (checking)
-                                boardStatus = BOARD_STATUS_CHECKING;
-                            else
-                                boardStatus = BOARD_STATUS_PLAYING;
-                        };
-                        uiHelper.movePiece(x1, y1, x2, y2, ease, onAnimEnd);
-                    };
                     if (pickInfo.hitPiece) {
-                        if (pickInfo.piece == curPickingInfo.mesh) {
+                        if (pickInfo.piece == curPick.mesh) {
                             uiHelper.unHighlightPiece(pos.x, pos.y);
                             boardStatus = BOARD_STATUS_PLAYING;
                         } else if (boardHelper.canMoveTo(
-                            curPickingInfo.x, curPickingInfo.y, pos.x, pos.y, chessBoard)) {
-                            doMove(curPickingInfo.x, curPickingInfo.y, pos.x, pos.y, true);
+                            curPick.x, curPick.y, pos.x, pos.y, chessBoard)) {
+                            doMove(curPick.x, curPick.y, pos.x, pos.y, true);
                         }
                     } else if (pickInfo.onBoard && boardHelper.canMoveTo(
-                        curPickingInfo.x, curPickingInfo.y, pos.x, pos.y, chessBoard)) {
-                        doMove(curPickingInfo.x, curPickingInfo.y, pos.x, pos.y, false);
+                        curPick.x, curPick.y, pos.x, pos.y, chessBoard)) {
+                        doMove(curPick.x, curPick.y, pos.x, pos.y, false);
                     }
                     break;
                 case BOARD_STATUS_CHECKING:
-                    console.log("DEBUG: CHECKING");
-                    // TODO checking
-                    boardStatus = BOARD_STATUS_DECHECKING;
+                    if (pickInfo.hitPiece && pickInfo.pieceBelong == curCamp) {
+                        setCurPick();
+                        boardStatus = BOARD_STATUS_DECHECKING;
+                    }
                     break;
                 case BOARD_STATUS_DECHECKING:
+                    if (pickInfo.hitPiece) {
+                        if (pickInfo.piece == curPick.mesh) {
+                            uiHelper.unHighlightPiece(pos.x, pos.y);
+                            boardStatus = BOARD_STATUS_CHECKING;
+                        } else if (
+                            boardHelper.canMoveTo(curPick.x, curPick.y, pos.x, pos.y, chessBoard) &&
+                            boardHelper.canDeCheckmate(curPick.x, curPick.y, pos.x, pos.y, chessBoard)) {
+                            doMove(curPick.x, curPick.y, pos.x, pos.y, true);
+                        }
+                    } else if (pickInfo.onBoard &&
+                        boardHelper.canMoveTo(curPick.x, curPick.y, pos.x, pos.y, chessBoard) &&
+                        boardHelper.canDeCheckmate(curPick.x, curPick.y, pos.x, pos.y, chessBoard)) {
+                        doMove(curPick.x, curPick.y, pos.x, pos.y, false);
+                    }
                     break;
                 case BOARD_STATUS_DO_MOVING:
                     // do nothing when move a piece
