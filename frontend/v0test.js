@@ -258,7 +258,6 @@ var createScene = function () {
 
         // if move piece at (x1,y1) to (x2,y2) can help the king
         let canDeCheckmate = function (x1, y1, x2, y2, chessBoard) {
-            // FIXME sometime does not work
             let pieceInfo = chessBoard[x1][y1];
             if (pieceInfo.belong == curCamp &&
                 boardHelper.canMoveTo(x1, y1, x2, y2, chessBoard)) {
@@ -277,6 +276,7 @@ var createScene = function () {
                     posOfKing = { x: x2, y: y2 };
                 }
                 tmpBoard[x2][y2] = tmpBoard[x1][y1];
+                tmpBoard[x1][y1] = { pieceType: null };
                 if (!isChecked(curCamp, tmpBoard, posOfKing)) return true;
             }
             return false;
@@ -298,6 +298,8 @@ var createScene = function () {
     }
 
     // ############################ BabylonJs UI Mechianism ############################
+
+
 
     const PIECE_SIZE = 4;
     const BOARD_PLANE_Y = 2;
@@ -361,7 +363,6 @@ var createScene = function () {
                 boardBox.material = statusMat;
 
                 let updateText = (text) => {
-                    console.log("here, text", text, "curcamp", curCamp);
                     //Check width of text for given font type at any size of font
                     let ctx = statusText.getContext();
                     let size = 12; //any value will work
@@ -472,122 +473,6 @@ var createScene = function () {
             }
         }
 
-        const BOOM_OPTION = {
-            gravity: -0.05, radius: 1, speed: 0.55,
-            minY: -10, numOfParticle: 30, disposeTimeout: 800,
-        };
-
-        function buildBoomSPS(model, scene) {
-            const gravity = BOOM_OPTION.gravity;
-            const radius = BOOM_OPTION.radius;
-            const speed = BOOM_OPTION.speed;
-            const minY = BOOM_OPTION.minY;
-            const numOfParticle = BOOM_OPTION.numOfParticle;
-            const disposeTimeout = BOOM_OPTION.disposeTimeout;
-
-            // initialize SPS
-            var sps = new BABYLON.SolidParticleSystem("sps", scene, { isPickable: true });
-            sps.digest(model, { number: numOfParticle });
-            model.dispose();
-            var digestedMesh = sps.buildMesh();
-            digestedMesh.material = model.material;
-            digestedMesh.position = model.position;
-            sps.setParticles();
-            sps.refreshVisibleSize();
-            sps.vars = {
-                target: BABYLON.Vector3.Zero(),
-                tmp: BABYLON.Vector3.Zero(),
-                justClicked: false,
-                radius: radius,
-                minY: minY,
-                boom: false,
-            };
-            var beforeRender = () => sps.setParticles();
-            // set update function of each particles
-            sps.updateParticle = function (p) {
-                if (sps.vars.justClicked) {
-                    p.position.subtractToRef(sps.vars.target, sps.vars.tmp);
-                    var len = sps.vars.tmp.length();
-                    var scl = (len < 0.001) ? 1.0 : sps.vars.radius / len;
-                    sps.vars.tmp.normalize();
-                    p.velocity.x += sps.vars.tmp.x * scl * speed * (1 + Math.random() * 0.3);
-                    p.velocity.y += sps.vars.tmp.y * scl * speed * (1 + Math.random() * 0.3);
-                    p.velocity.z += sps.vars.tmp.z * scl * speed * (1 + Math.random() * 0.3);
-                    p.rand = Math.random() / 100;
-                    if (p.idx == sps.nbParticles - 1)
-                        sps.vars.justClicked = false;
-                }
-                if (sps.vars.boom && !sps.vars.justClicked) {
-                    if (p.position.y < sps.vars.minY) {
-                        p.position.y = sps.vars.minY;
-                        p.velocity.setAll(0);
-                    } else {
-                        p.velocity.y += gravity;
-                        p.position.addInPlace(p.velocity);
-                        p.rotation.x += (p.velocity.z) * p.rand;
-                        p.rotation.y += (p.velocity.x) * p.rand;
-                        p.rotation.z += (p.velocity.y) * p.rand;
-                    }
-                }
-            };
-            function boomFrom(center) {
-                scene.registerBeforeRender(beforeRender);
-                setTimeout(() => {
-                    digestedMesh.dispose();
-                }, disposeTimeout);
-                sps.vars.boom = true;
-                sps.vars.target = center;
-                sps.vars.justClicked = true;
-            }
-            return { sps, digestedMesh, boomFrom };
-        }
-        var pieceMeshSet = new Set();
-        // draw piece
-        {
-            var calcPiecePos = (i, j) => {
-                var lbPos = new BABYLON.Vector3(0, BOARD_PLANE_Y + PIECE_SIZE / 2 + BOARD_PIECE_INTER, 0);
-                if (j >= 5)
-                    lbPos.z = BOARD_HALF_DEPTH - PIECE_SIZE / 2 + BOARD_RIVER_DEPTH + PIECE_SIZE / 2;
-                lbPos.x += i * PIECE_SIZE;
-                lbPos.z += j % 5 * PIECE_SIZE
-                return lbPos;
-            };
-            var drawPiece = (pieceInfo, pos3d) => {
-                // use text as pieceType for now
-                var pieceText = new BABYLON.DynamicTexture("dynamic texture", { width: 20, height: 20 }, scene);
-                pieceText.drawText(
-                    pieceInfo.pieceType, 0, 12,
-                    "bold 10px Consolas",
-                    "white",
-                    pieceInfo.belong == CAMP_BLUE ? "blue" : "red",
-                    true, true
-                );
-                var piece = BABYLON.MeshBuilder.CreateTorusKnot("tk", { radius: 1, tube: 0.3, radialSegments: 128 });
-                var pieceMat = new BABYLON.StandardMaterial("pmat", scene);
-                pieceMat.diffuseTexture = pieceText;
-                piece.material = pieceMat;
-                piece.position = pos3d;
-                // return piece;
-                return buildBoomSPS(piece, scene);
-
-            };
-            for (let i = 0; i < chessBoard.length; i++) {
-                chessBoardUIObjs.push([]);
-                for (let j = 0; j < chessBoard[i].length; j++) {
-                    chessBoardUIObjs[i].push({ mesh: null });
-                    if (chessBoard[i][j].pieceType != null) {
-                        let pos3d = calcPiecePos(i, j);
-                        var sps = drawPiece(chessBoard[i][j], pos3d);
-                        chessBoardUIObjs[i][j] = {
-                            mesh: sps.digestedMesh,
-                            color: sps.digestedMesh.material.emissiveColor,
-                            sps: sps,
-                        };
-                        pieceMeshSet.add(sps.digestedMesh);
-                    }
-                }
-            }
-        }
 
         var hintBox = BABYLON.MeshBuilder.CreateBox("hint", { size: 2 * PIECE_SIZE / 3, height: 0.2 });
         {
@@ -869,17 +754,167 @@ var createScene = function () {
             }
         }
 
-        scene.onPointerObservable.add((pointerInfo, evtState) => {
-            switch (pointerInfo.type) {
-                case BABYLON.PointerEventTypes.POINTERMOVE:
-                    pointerMove();
-                    break;
-                case BABYLON.PointerEventTypes.POINTERDOWN:
-                    pointerDown(pointerInfo.pickInfo);
-                    break;
-                default:
-                    break;
+        const BOOM_OPTION = {
+            gravity: -0.05, radius: 1, speed: 0.55,
+            minY: -10, numOfParticle: 30, disposeTimeout: 800,
+        };
+
+        function buildBoomSPS(model, scene) {
+            const gravity = BOOM_OPTION.gravity;
+            const radius = BOOM_OPTION.radius;
+            const speed = BOOM_OPTION.speed;
+            const minY = BOOM_OPTION.minY;
+            const numOfParticle = BOOM_OPTION.numOfParticle;
+            const disposeTimeout = BOOM_OPTION.disposeTimeout;
+
+            // initialize SPS
+            var sps = new BABYLON.SolidParticleSystem("sps", scene, { isPickable: true });
+            sps.digest(model, { number: numOfParticle });
+            model.dispose();
+            var digestedMesh = sps.buildMesh();
+            digestedMesh.material = model.material;
+            digestedMesh.position = model.position;
+            digestedMesh.scaling = model.scaling;
+            sps.setParticles();
+            sps.refreshVisibleSize();
+            sps.vars = {
+                target: BABYLON.Vector3.Zero(),
+                tmp: BABYLON.Vector3.Zero(),
+                justClicked: false,
+                radius: radius,
+                minY: minY,
+                boom: false,
+            };
+            var beforeRender = () => sps.setParticles();
+            // set update function of each particles
+            sps.updateParticle = function (p) {
+                if (sps.vars.justClicked) {
+                    p.position.subtractToRef(sps.vars.target, sps.vars.tmp);
+                    var len = sps.vars.tmp.length();
+                    var scl = (len < 0.001) ? 1.0 : sps.vars.radius / len;
+                    sps.vars.tmp.normalize();
+                    p.velocity.x += sps.vars.tmp.x * scl * speed * (1 + Math.random() * 0.3);
+                    p.velocity.y += sps.vars.tmp.y * scl * speed * (1 + Math.random() * 0.3);
+                    p.velocity.z += sps.vars.tmp.z * scl * speed * (1 + Math.random() * 0.3);
+                    p.rand = Math.random() / 100;
+                    if (p.idx == sps.nbParticles - 1)
+                        sps.vars.justClicked = false;
+                }
+                if (sps.vars.boom && !sps.vars.justClicked) {
+                    if (p.position.y < sps.vars.minY) {
+                        p.position.y = sps.vars.minY;
+                        p.velocity.setAll(0);
+                    } else {
+                        p.velocity.y += gravity;
+                        p.position.addInPlace(p.velocity);
+                        p.rotation.x += (p.velocity.z) * p.rand;
+                        p.rotation.y += (p.velocity.x) * p.rand;
+                        p.rotation.z += (p.velocity.y) * p.rand;
+                    }
+                }
+            };
+            function boomFrom(center) {
+                scene.registerBeforeRender(beforeRender);
+                setTimeout(() => {
+                    digestedMesh.dispose();
+                }, disposeTimeout);
+                sps.vars.boom = true;
+                sps.vars.target = center;
+                sps.vars.justClicked = true;
             }
+            return { sps, digestedMesh, boomFrom };
+        }
+        var pieceMeshSet = new Set();
+        // import and draw piece
+        {
+            var pieceModelInfo = {};
+            pieceModelInfo[PIECE_TYPE_CAR] = { name: "car.glb", mesh: null };
+            pieceModelInfo[PIECE_TYPE_HORSE] = { name: "horse.glb", mesh: null };
+            pieceModelInfo[PIECE_TYPE_ELEPHANT] = { name: "elephant.glb", mesh: null };
+            pieceModelInfo[PIECE_TYPE_GUARD] = { name: "knight.glb", mesh: null };
+            pieceModelInfo[PIECE_TYPE_KING] = { name: "king.glb", mesh: null };
+            pieceModelInfo[PIECE_TYPE_CANNON] = { name: "cannon.glb", mesh: null };
+            pieceModelInfo[PIECE_TYPE_SOLDIER] = { name: "zombie.glb", mesh: null };
+            var calcPiecePos = (i, j) => {
+                var lbPos = new BABYLON.Vector3(0, BOARD_PLANE_Y + PIECE_SIZE / 2 + BOARD_PIECE_INTER, 0);
+                if (j >= 5)
+                    lbPos.z = BOARD_HALF_DEPTH - PIECE_SIZE / 2 + BOARD_RIVER_DEPTH + PIECE_SIZE / 2;
+                lbPos.x += i * PIECE_SIZE;
+                lbPos.z += j % 5 * PIECE_SIZE
+                return lbPos;
+            };
+            var drawPiece = (pieceInfo, pos3d) => {
+                // use text as pieceType for now
+                // var pieceText = new BABYLON.DynamicTexture("dynamic texture", { width: 20, height: 20 }, scene);
+                // pieceText.drawText(
+                //     pieceInfo.pieceType, 0, 12,
+                //     "bold 10px Consolas",
+                //     "white",
+                //     pieceInfo.belong == CAMP_BLUE ? "blue" : "red",
+                //     true, true
+                // );
+                // var piece = BABYLON.MeshBuilder.CreateTorusKnot("tk", { radius: 1, tube: 0.3, radialSegments: 128 });
+                var piece = pieceModelInfo[pieceInfo.pieceType].mesh.clone();
+                var pieceMat = new BABYLON.StandardMaterial("pmat", scene);
+                pieceMat.diffuseColor = (pieceInfo.belong == CAMP_BLUE ?
+                    BABYLON.Color3.Blue() : BABYLON.Color3.Red());
+                // pieceMat.diffuseTexture = pieceText;
+                piece.material = pieceMat;
+                piece.position = pos3d;
+                // return piece;
+                return buildBoomSPS(piece, scene);
+            };
+            function drawAllPieces(onOver) {
+                let promises = [];
+                let types = [];
+                for (const ptype in pieceModelInfo) {
+                    let modelName = pieceModelInfo[ptype].name;
+                    types.push(ptype);
+                    promises.push(BABYLON.SceneLoader.ImportMeshAsync(
+                        "", "models/", modelName, scene));
+                }
+                Promise.all(promises).then((res) => {
+                    for (let i = 0; i < res.length; i++) {
+                        pieceModelInfo[types[i]].model = res[i];
+                        let mesh = res[i].meshes[1];
+                        mesh.scaling = new BABYLON.Vector3(0.1, 0.1, 0.1);
+                        pieceModelInfo[types[i]].mesh = mesh;
+                    }
+                    for (let i = 0; i < chessBoard.length; i++) {
+                        chessBoardUIObjs.push([]);
+                        for (let j = 0; j < chessBoard[i].length; j++) {
+                            chessBoardUIObjs[i].push({ mesh: null });
+                            if (chessBoard[i][j].pieceType == null) continue;
+                            let pos3d = calcPiecePos(i, j);
+                            var sps = drawPiece(chessBoard[i][j], pos3d);
+                            chessBoardUIObjs[i][j] = {
+                                mesh: sps.digestedMesh,
+                                color: sps.digestedMesh.material.emissiveColor,
+                                sps: sps,
+                            };
+                            pieceMeshSet.add(sps.digestedMesh);
+                        }
+                    }
+                    onOver();
+                }, (reason) => {
+                    console.error(reason);
+                });
+            }
+        }
+
+        drawAllPieces(() => {
+            scene.onPointerObservable.add((pointerInfo) => {
+                switch (pointerInfo.type) {
+                    case BABYLON.PointerEventTypes.POINTERMOVE:
+                        pointerMove();
+                        break;
+                    case BABYLON.PointerEventTypes.POINTERDOWN:
+                        pointerDown(pointerInfo.pickInfo);
+                        break;
+                    default:
+                        break;
+                }
+            });
         });
     }
 
