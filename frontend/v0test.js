@@ -301,7 +301,7 @@ var createScene = function () {
 
 
 
-    const PIECE_SIZE = 4;
+    const PIECE_SIZE = 5;
     const BOARD_PLANE_Y = 2;
     const BOARD_PIECE_INTER = 0;
     const BOARD_WIDTH = PIECE_SIZE * 9;
@@ -331,7 +331,7 @@ var createScene = function () {
             ground.material = gridMat;
             // Glow layer
             var gl = new BABYLON.GlowLayer("glow", scene);
-            gl.intensity = 0.3;
+            gl.intensity = 0.2;
 
             // DEBUG light beam
             {
@@ -542,12 +542,12 @@ var createScene = function () {
                 }
                 return null;
             }
-            function boardPos2Pos3d(x, y) {
+            function boardPos2Pos3d(x, y, y3d) {
                 if (x != null && y != null) {
                     let z = y * PIECE_SIZE;
                     if (z > 4 * PIECE_SIZE) z += BOARD_RIVER_DEPTH;
                     return new BABYLON.Vector3(
-                        x * PIECE_SIZE, BOARD_PLANE_Y + PIECE_SIZE / 2 + BOARD_PIECE_INTER, z
+                        x * PIECE_SIZE, y3d, z
                     );
                 }
                 return null;
@@ -600,7 +600,7 @@ var createScene = function () {
                 let easeFunc = (ease ? new BABYLON.PowerEase(4) : null);
                 BABYLON.Animation.CreateAndStartAnimation(
                     "tanim", mesh, "position", 60, 40,
-                    mesh.position, boardPos2Pos3d(x2, y2),
+                    mesh.position, boardPos2Pos3d(x2, y2, mesh.position.y),
                     BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT,
                     easeFunc, onEnd, scene
                 );
@@ -755,8 +755,8 @@ var createScene = function () {
         }
 
         const BOOM_OPTION = {
-            gravity: -0.05, radius: 1, speed: 0.55,
-            minY: -10, numOfParticle: 30, disposeTimeout: 800,
+            gravity: -0.05, radius: 10, speed: 0.95,
+            minY: -10, numOfParticle: 200, disposeTimeout: 1000,
         };
 
         function buildBoomSPS(model, scene) {
@@ -775,6 +775,7 @@ var createScene = function () {
             digestedMesh.material = model.material;
             digestedMesh.position = model.position;
             digestedMesh.scaling = model.scaling;
+            digestedMesh.rotation = model.rotation;
             sps.setParticles();
             sps.refreshVisibleSize();
             sps.vars = {
@@ -824,43 +825,42 @@ var createScene = function () {
             }
             return { sps, digestedMesh, boomFrom };
         }
+
         var pieceMeshSet = new Set();
         // import and draw piece
         {
             var pieceModelInfo = {};
-            pieceModelInfo[PIECE_TYPE_CAR] = { name: "car.glb", mesh: null };
-            pieceModelInfo[PIECE_TYPE_HORSE] = { name: "horse.glb", mesh: null };
-            pieceModelInfo[PIECE_TYPE_ELEPHANT] = { name: "elephant.glb", mesh: null };
-            pieceModelInfo[PIECE_TYPE_GUARD] = { name: "knight.glb", mesh: null };
-            pieceModelInfo[PIECE_TYPE_KING] = { name: "king.glb", mesh: null };
-            pieceModelInfo[PIECE_TYPE_CANNON] = { name: "cannon.glb", mesh: null };
-            pieceModelInfo[PIECE_TYPE_SOLDIER] = { name: "zombie.glb", mesh: null };
-            var calcPiecePos = (i, j) => {
-                var lbPos = new BABYLON.Vector3(0, BOARD_PLANE_Y + PIECE_SIZE / 2 + BOARD_PIECE_INTER, 0);
+            pieceModelInfo[PIECE_TYPE_CAR] = { name: "car.glb", mesh: null, scale: new BABYLON.Vector3(160, 160, 160), };
+            pieceModelInfo[PIECE_TYPE_HORSE] = { name: "horse.glb", mesh: null, scale: new BABYLON.Vector3(0.1, 0.1, 0.1), };
+            pieceModelInfo[PIECE_TYPE_ELEPHANT] = { name: "elephant.glb", mesh: null, scale: new BABYLON.Vector3(0.01, 0.01, 0.009), };
+            pieceModelInfo[PIECE_TYPE_GUARD] = { name: "knight.glb", mesh: null, scale: new BABYLON.Vector3(0.03, 0.03, 0.03), };
+            pieceModelInfo[PIECE_TYPE_KING] = { name: "king.glb", mesh: null, scale: new BABYLON.Vector3(4, 4, 4), };
+            pieceModelInfo[PIECE_TYPE_CANNON] = { name: "cannon.glb", mesh: null, scale: new BABYLON.Vector3(0.003, 0.003, 0.003), };
+            pieceModelInfo[PIECE_TYPE_SOLDIER] = { name: "zombie.glb", mesh: null, scale: new BABYLON.Vector3(5, 5, 5), };
+
+            var calcPiecePosXZ = (i, j) => {
+                var lbPos = new BABYLON.Vector3(0, 0, 0);
                 if (j >= 5)
                     lbPos.z = BOARD_HALF_DEPTH - PIECE_SIZE / 2 + BOARD_RIVER_DEPTH + PIECE_SIZE / 2;
                 lbPos.x += i * PIECE_SIZE;
                 lbPos.z += j % 5 * PIECE_SIZE
                 return lbPos;
             };
-            var drawPiece = (pieceInfo, pos3d) => {
-                // use text as pieceType for now
-                // var pieceText = new BABYLON.DynamicTexture("dynamic texture", { width: 20, height: 20 }, scene);
-                // pieceText.drawText(
-                //     pieceInfo.pieceType, 0, 12,
-                //     "bold 10px Consolas",
-                //     "white",
-                //     pieceInfo.belong == CAMP_BLUE ? "blue" : "red",
-                //     true, true
-                // );
-                // var piece = BABYLON.MeshBuilder.CreateTorusKnot("tk", { radius: 1, tube: 0.3, radialSegments: 128 });
+            var drawPiece = (pieceInfo, x, z) => {
                 var piece = pieceModelInfo[pieceInfo.pieceType].mesh.clone();
+                // var pieceMat = pieceModelInfo[pieceInfo.pieceType].mesh.material.clone();
                 var pieceMat = new BABYLON.StandardMaterial("pmat", scene);
-                pieceMat.diffuseColor = (pieceInfo.belong == CAMP_BLUE ?
-                    BABYLON.Color3.Blue() : BABYLON.Color3.Red());
-                // pieceMat.diffuseTexture = pieceText;
                 piece.material = pieceMat;
-                piece.position = pos3d;
+                piece.material.diffuseColor = (pieceInfo.belong == CAMP_BLUE ?
+                    BABYLON.Color3.Blue() : BABYLON.Color3.Red());
+
+                // we need to calculate y here accord the height
+                let sizeBelowZero = (0 - piece.getBoundingInfo().minimum.y) * piece.scaling.y;
+                let y = BOARD_PLANE_Y + BOARD_PIECE_INTER + sizeBelowZero;
+                piece.position = new BABYLON.Vector3(x, y, z);
+
+                // and rotate red ones
+                piece.rotation = new BABYLON.Vector3(0, (pieceInfo.belong == CAMP_BLUE ? 0 : Math.PI), 0);
                 // return piece;
                 return buildBoomSPS(piece, scene);
             };
@@ -875,18 +875,24 @@ var createScene = function () {
                 }
                 Promise.all(promises).then((res) => {
                     for (let i = 0; i < res.length; i++) {
+                        let meshes = res[i].meshes;
+                        let mesh = meshes[1];
+                        if (meshes.length > 2) {
+                            meshes.shift();
+                            mesh = BABYLON.Mesh.MergeMeshes(meshes);
+                        }
+                        mesh.scaling = pieceModelInfo[types[i]].scale;
                         pieceModelInfo[types[i]].model = res[i];
-                        let mesh = res[i].meshes[1];
-                        mesh.scaling = new BABYLON.Vector3(0.1, 0.1, 0.1);
                         pieceModelInfo[types[i]].mesh = mesh;
                     }
                     for (let i = 0; i < chessBoard.length; i++) {
                         chessBoardUIObjs.push([]);
                         for (let j = 0; j < chessBoard[i].length; j++) {
                             chessBoardUIObjs[i].push({ mesh: null });
-                            if (chessBoard[i][j].pieceType == null) continue;
-                            let pos3d = calcPiecePos(i, j);
-                            var sps = drawPiece(chessBoard[i][j], pos3d);
+                            if (chessBoard[i][j].pieceType == null)
+                                continue;
+                            let pos3d = calcPiecePosXZ(i, j);
+                            var sps = drawPiece(chessBoard[i][j], pos3d.x, pos3d.z);
                             chessBoardUIObjs[i][j] = {
                                 mesh: sps.digestedMesh,
                                 color: sps.digestedMesh.material.emissiveColor,
@@ -894,6 +900,9 @@ var createScene = function () {
                             };
                             pieceMeshSet.add(sps.digestedMesh);
                         }
+                    }
+                    for (const type in pieceModelInfo) {
+                        pieceModelInfo[type].mesh.dispose();
                     }
                     onOver();
                 }, (reason) => {
