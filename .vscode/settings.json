@@ -1,5 +1,6 @@
 {
     "todo-tree.filtering.excludeGlobs": [
-        "**/three.js/**"
+        "**/three.js/**",
+        "**/3dChess/frontend/js/**"
     ]
 }

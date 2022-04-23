@@ -647,7 +647,7 @@ var createScene = function () {
                     break;
                 case BOARD_STATUS_DECHECKING:
                 case BOARD_STATUS_PIECE_PICKED:
-                    // FIXME shuold not move if the move makes checkmate
+                    // bug: shuold not move if the move makes checkmate
                     let gotOne = false;
                     if (pickInfo.hitPiece &&
                         pickInfo.piece != curPick.mesh &&
